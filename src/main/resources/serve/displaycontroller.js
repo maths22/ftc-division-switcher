@@ -22,16 +22,13 @@ var time = {div: 'none'};
 function stateToLabel(state) {
     switch(state) {
         case "prematch":
-            return "Pre-Match:";
-        case "timer":
-            return "Timer:";
+            return "Pre-Match/Active:";
         case "results":
             return "Result:";
     }
 }
 
 function getNextState() {
-    if(state === "prematch") return ["timer", 0];
     var selectedMatch = $("#match-select").val();
     var phase = selectedMatch.replace(/[^A-Z]/g, '').substring(1);
     var nextMatch = matches[matches.findIndex(function(element) {return element === selectedMatch }) + 1];
@@ -41,7 +38,7 @@ function getNextState() {
         var nextSeries = nextMatch.substring(0, nextMatch.lastIndexOf("-") + 1);
         var thisSeries = selectedMatch.substring(0, selectedMatch.lastIndexOf("-") + 1);
         if(phase !== 'Q' && nextSeries === thisSeries) {
-            if(state === "timer") {
+            if(state === "prematch") {
                 return ["results", 0];
             } else if(state === "results") {
                 return ["prematch", 1];
@@ -50,14 +47,14 @@ function getNextState() {
         }
     } else {
         if(phase === 'F' && !haveD1AndD2) {
-            if(state === "timer") {
+            if(state === "prematch") {
                 return ["results", 0];
             } else if(state === "results") {
                 return ["prematch", 1];
             }
         }
     }
-    if(state === "timer") {
+    if(state === "prematch") {
         var numofphase = 0;
         $.each(matches, function( index, value ) {
             if(value.replace(/[^A-Z]/g, '').substring(1) === phase) {

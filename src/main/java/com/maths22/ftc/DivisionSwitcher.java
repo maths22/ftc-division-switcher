@@ -22,8 +22,16 @@ import java.net.NetworkInterface;
 import java.util.*;
 import java.util.List;
 import java.util.Timer;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 public class DivisionSwitcher {
+    private ScheduledFuture<?> d0Loop = null;
+    private ScheduledFuture<?> d1Loop = null;
+    private ScheduledFuture<?> d2Loop = null;
     private String data;
     private WebSocketChannel websocket;
     private JButton connectButton;
@@ -46,14 +54,19 @@ public class DivisionSwitcher {
     private JLabel d0Status;
     private JLabel d2Status;
     private JLabel audienceStatus;
+    private JComboBox<String> d0Event;
+    private JComboBox<String> d1Event;
+    private JComboBox<String> d2Event;
     private Client switcherClient;
-    private Client d0Client;
-    private Client d1Client;
-    private Client d2Client;
+    private FtcScoringClient d0Client = new FtcScoringClient(0);
+    private FtcScoringClient d1Client = new FtcScoringClient(1);
+    private FtcScoringClient d2Client = new FtcScoringClient(2);
     private List<JSONObject> d0Matches = new ArrayList<>();
     private List<JSONObject> d1Matches = new ArrayList<>();
     private List<JSONObject> d2Matches = new ArrayList<>();
     private String spreadsheetId;
+    private ScheduledExecutorService executor = Executors.newScheduledThreadPool(3);
+
     private final SheetRetriever retriever = new SheetRetriever();
 
     public static void main(String[] args) {
@@ -82,98 +95,132 @@ public class DivisionSwitcher {
                 e1.printStackTrace();
             }
         });
-        d0ConnectButton.addActionListener((e) -> {
-            if (d0Client != null) {
-                d0Client.disconnect();
-            }
+        d0Address.addActionListener((e) -> {
+            d0Client.setBasePath(d0Address.getText());
+            d0Event.removeAllItems();
             try {
-
-                d0Client = new Client(d0Address.getText(), 43785, "user", "password");
-                d0Client.subscribe("/timer/status", (map, s) -> {
-                    sendTime("0", s);
-                });
-                d0Client.subscribe("/display/listmatches", (map, s) -> {
-                    JSONArray matchArray = new JSONArray(s);
-                    ArrayList<JSONObject> matches = new ArrayList<>();
-                    for(int i = 0; i < matchArray.length(); i++) {
-                        matches.add(matchArray.getJSONObject(i));
-                    }
-                    d0Matches = matches;
-                    sendMatches();
-                });
-                d0Client.send("/display/getmatches","");
-                d0Client.subscribe("/heartbeat", heartbeatListener(d0Client, d0Status));
-
-            } catch (IOException | LoginException e1) {
-                e1.printStackTrace();
+                d0Client.getEvents().forEach((evt) -> d0Event.addItem(evt));
+            } catch (Exception ex) {
+                ex.printStackTrace();
             }
         });
+
+        d1Address.addActionListener((e) -> {
+            d1Client.setBasePath(d1Address.getText());
+            d1Event.removeAllItems();
+            try {
+                d1Client.getEvents().forEach((evt) -> d1Event.addItem(evt));
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+        });
+
+        d2Address.addActionListener((e) -> {
+            d2Client.setBasePath(d2Address.getText());
+            d2Event.removeAllItems();
+            try {
+                d2Client.getEvents().forEach((evt) -> d2Event.addItem(evt));
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+        });
+//        d0ConnectButton.addActionListener((e) -> {
+//            if (d0Client != null) {
+//                d0Client.disconnect();
+//            }
+//            try {
+//
+//                d0Client = new Client(d0Address.getText(), 43785, "user", "password");
+//
+//                d0Client.subscribe("/display/listmatches", (map, s) -> {
+//                    JSONArray matchArray = new JSONArray(s);
+//                    ArrayList<JSONObject> matches = new ArrayList<>();
+//                    for(int i = 0; i < matchArray.length(); i++) {
+//                        matches.add(matchArray.getJSONObject(i));
+//                    }
+//                    d0Matches = matches;
+//                    sendMatches();
+//                });
+//                d0Client.subscribe("/heartbeat", heartbeatListener(d0Client, d0Status));
+//
+//            } catch (IOException | LoginException e1) {
+//                e1.printStackTrace();
+//            }
+//        });
         d1ConnectButton.addActionListener((ActionEvent e) -> {
-            if (d1Client != null) {
-                d1Client.disconnect();
+            if (d1Loop != null) {
+                d1Loop.cancel(true);
             }
             try {
+                d1Client.setEvent((String) d1Event.getSelectedItem());
+//                d1Client.subscribe("/timer/status", (map, s) -> {
+//                    sendTime("1", s);
+//                });
 
-                d1Client = new Client(d1Address.getText(), 43786, "user", "password");
-                d1Client.subscribe("/timer/status", (map, s) -> {
-                    sendTime("1", s);
-                });
-                d1Client.subscribe("/display/listmatches", (map, s) -> {
-                    JSONArray matchArray = new JSONArray(s);
-                    ArrayList<JSONObject> matches = new ArrayList<>();
-                    for(int i = 0; i < matchArray.length(); i++) {
-                        matches.add(matchArray.getJSONObject(i));
+                d1Loop = executor.scheduleAtFixedRate(() -> {
+                    try {
+                        d1Matches = d1Client.getMatches().stream().map(Match::toJson).collect(Collectors.toList());
+                        sendMatches();
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
                     }
-                    d1Matches = matches;
-                    sendMatches();
-                });
-                d1Client.send("/display/getmatches","");
-                d1Client.subscribe("/heartbeat", heartbeatListener(d1Client, d1Status));
+                }, 0, 5, TimeUnit.SECONDS);
+//                d1Client.subscribe("/display/listmatches", (map, s) -> {
+//                    JSONArray matchArray = new JSONArray(s);
+//                    ArrayList<JSONObject> matches = new ArrayList<>();
+//                    for(int i = 0; i < matchArray.length(); i++) {
+//                        matches.add(matchArray.getJSONObject(i));
+//                    }
+//                    d1Matches = matches;
+//                    sendMatches();
+//                });
+//                d1Client.send("/display/getmatches","");
+//                d1Client.subscribe("/heartbeat", heartbeatListener(d1Client, d1Status));
 
-            } catch (IOException | LoginException e1) {
+            } catch (Exception e1) {
                 e1.printStackTrace();
             }
         });
-        d2ConnectButton.addActionListener((e) -> {
-            if (d2Client != null) {
-                d2Client.disconnect();
-            }
-            try {
-
-                d2Client = new Client(d2Address.getText(), 43787, "user", "password");
-                d2Client.subscribe("/timer/status", (map, s) -> {
-                    sendTime("2", s);
-                });
-                d2Client.subscribe("/display/listmatches", (map, s) -> {
-                    JSONArray matchArray = new JSONArray(s);
-                    ArrayList<JSONObject> matches = new ArrayList<>();
-                    for(int i = 0; i < matchArray.length(); i++) {
-                        matches.add(matchArray.getJSONObject(i));
-                    }
-                    d2Matches = matches;
-                    sendMatches();
-                });
-                d2Client.send("/display/getmatches","");
-                d2Client.subscribe("/heartbeat", heartbeatListener(d2Client, d2Status));
-
-            } catch (IOException | LoginException e1) {
-                e1.printStackTrace();
-            }
-        });
+//        d2ConnectButton.addActionListener((e) -> {
+//            if (d2Client != null) {
+//                d2Client.disconnect();
+//            }
+//            try {
+//
+//                d2Client = new Client(d2Address.getText(), 43787, "user", "password");
+//                d2Client.subscribe("/timer/status", (map, s) -> {
+//                    sendTime("2", s);
+//                });
+//                d2Client.subscribe("/display/listmatches", (map, s) -> {
+//                    JSONArray matchArray = new JSONArray(s);
+//                    ArrayList<JSONObject> matches = new ArrayList<>();
+//                    for(int i = 0; i < matchArray.length(); i++) {
+//                        matches.add(matchArray.getJSONObject(i));
+//                    }
+//                    d2Matches = matches;
+//                    sendMatches();
+//                });
+//                d2Client.send("/display/getmatches","");
+//                d2Client.subscribe("/heartbeat", heartbeatListener(d2Client, d2Status));
+//
+//            } catch (IOException | LoginException e1) {
+//                e1.printStackTrace();
+//            }
+//        });
 
         Undertow server = Undertow.builder()
-                .addHttpListener(8887, "0.0.0.0")
+                .addHttpListener(8888, "0.0.0.0")
                 .setHandler(Handlers.path()
                         .addPrefixPath("/load", exchange -> {
-                            if(d0Client != null) {
-                                d0Client.send("/display/getmatches","");
-                            }
-                            if(d1Client != null) {
-                                d1Client.send("/display/getmatches","");
-                            }
-                            if(d2Client != null) {
-                                d2Client.send("/display/getmatches","");
-                            }
+//                            if(d0Client != null) {
+//                                d0Client.send("/display/getmatches","");
+//                            }
+//                            if(d1Client != null) {
+//                                d1Client.send("/display/getmatches","");
+//                            }
+//                            if(d2Client != null) {
+//                                d2Client.send("/display/getmatches","");
+//                            }
                             new Thread(DivisionSwitcher.this::sendAuxInfo).start();
                         })
                         .addPrefixPath("/matchstream", Handlers.websocket((exchange, channel) -> {
@@ -274,21 +321,24 @@ public class DivisionSwitcher {
             var5.printStackTrace();
         }
         resetButton.addActionListener(e -> {
-            if (d0Client != null) {
-                d0Client.disconnect();
-                d0Client = null;
+            if (d0Loop != null) {
+                d0Loop.cancel(true);
             }
-            if (d1Client != null) {
-                d1Client.disconnect();
-                d1Client = null;
+            if (d1Loop != null) {
+                d1Loop.cancel(true);
             }
-            if (d2Client != null) {
-                d2Client.disconnect();
-                d2Client = null;
+            if (d2Loop != null) {
+                d2Loop.cancel(true);
             }
             d0Matches = new ArrayList<>();
             d1Matches = new ArrayList<>();
             d2Matches = new ArrayList<>();
+            d0Address.setText("");
+            d1Address.setText("");
+            d2Address.setText("");
+            d0Event.removeAllItems();
+            d1Event.removeAllItems();
+            d2Event.removeAllItems();
             sendMatches();
         });
         sheetIdLoadButton.addActionListener(e -> {
@@ -426,19 +476,19 @@ public class DivisionSwitcher {
 
     private void sendD0DisplayMessage(String s, String m) {
         if(d0Client != null) {
-            d0Client.send("/display/show", s + " " + m);
+//            d0Client.send("/display/show", s + " " + m);
         }
     }
 
     private void sendD1DisplayMessage(String s, String m) {
         if(d1Client != null) {
-            d1Client.send("/display/show", s + " " + m);
+//            d1Client.send("/display/show", s + " " + m);
         }
     }
 
     private void sendD2DisplayMessage(String s, String m) {
         if(d2Client != null) {
-            d2Client.send("/display/show", s + " " + m);
+//            d2Client.send("/display/show", s + " " + m);
         }
     }
 
@@ -479,5 +529,4 @@ public class DivisionSwitcher {
 
         return titleCase.toString();
     }
-
 }
