@@ -15,6 +15,7 @@ import javax.security.auth.login.LoginException;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -57,6 +58,7 @@ public class DivisionSwitcher {
     private JComboBox<String> d0Event;
     private JComboBox<String> d1Event;
     private JComboBox<String> d2Event;
+    private JCheckBox enabledCheckBox;
     private Client switcherClient;
     private FtcScoringClient d0Client = new FtcScoringClient(0);
     private FtcScoringClient d1Client = new FtcScoringClient(1);
@@ -124,35 +126,37 @@ public class DivisionSwitcher {
                 ex.printStackTrace();
             }
         });
-//        d0ConnectButton.addActionListener((e) -> {
-//            if (d0Client != null) {
-//                d0Client.disconnect();
-//            }
-//            try {
-//
-//                d0Client = new Client(d0Address.getText(), 43785, "user", "password");
-//
-//                d0Client.subscribe("/display/listmatches", (map, s) -> {
-//                    JSONArray matchArray = new JSONArray(s);
-//                    ArrayList<JSONObject> matches = new ArrayList<>();
-//                    for(int i = 0; i < matchArray.length(); i++) {
-//                        matches.add(matchArray.getJSONObject(i));
-//                    }
-//                    d0Matches = matches;
-//                    sendMatches();
+       d0ConnectButton.addActionListener((ActionEvent e) -> {
+            if (d0Loop != null) {
+                d0Loop.cancel(true);
+            }
+            try {
+                d0Client.setEvent((String) d1Event.getSelectedItem());
+                if(d0Client.getEvent() == null) return;
+//                d1Client.subscribe("/timer/status", (map, s) -> {
+//                    sendTime("1", s);
 //                });
-//                d0Client.subscribe("/heartbeat", heartbeatListener(d0Client, d0Status));
-//
-//            } catch (IOException | LoginException e1) {
-//                e1.printStackTrace();
-//            }
-//        });
+
+                d0Loop = executor.scheduleAtFixedRate(() -> {
+                    try {
+                        d0Matches = d0Client.getMatches().stream().map(Match::toJson).collect(Collectors.toList());
+                        sendMatches();
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
+                }, 0, 5, TimeUnit.SECONDS);
+
+            } catch (Exception e1) {
+                e1.printStackTrace();
+            }
+        });
         d1ConnectButton.addActionListener((ActionEvent e) -> {
             if (d1Loop != null) {
                 d1Loop.cancel(true);
             }
             try {
                 d1Client.setEvent((String) d1Event.getSelectedItem());
+                if(d1Client.getEvent() == null) return;
 //                d1Client.subscribe("/timer/status", (map, s) -> {
 //                    sendTime("1", s);
 //                });
@@ -165,63 +169,42 @@ public class DivisionSwitcher {
                         ex.printStackTrace();
                     }
                 }, 0, 5, TimeUnit.SECONDS);
-//                d1Client.subscribe("/display/listmatches", (map, s) -> {
-//                    JSONArray matchArray = new JSONArray(s);
-//                    ArrayList<JSONObject> matches = new ArrayList<>();
-//                    for(int i = 0; i < matchArray.length(); i++) {
-//                        matches.add(matchArray.getJSONObject(i));
-//                    }
-//                    d1Matches = matches;
-//                    sendMatches();
-//                });
-//                d1Client.send("/display/getmatches","");
-//                d1Client.subscribe("/heartbeat", heartbeatListener(d1Client, d1Status));
 
             } catch (Exception e1) {
                 e1.printStackTrace();
             }
         });
-//        d2ConnectButton.addActionListener((e) -> {
-//            if (d2Client != null) {
-//                d2Client.disconnect();
-//            }
-//            try {
-//
-//                d2Client = new Client(d2Address.getText(), 43787, "user", "password");
+        d2ConnectButton.addActionListener((ActionEvent e) -> {
+            if (d2Loop != null) {
+                d2Loop.cancel(true);
+            }
+            try {
+                d2Client.setEvent((String) d1Event.getSelectedItem());
+                if(d2Client.getEvent() == null) return;
 //                d2Client.subscribe("/timer/status", (map, s) -> {
-//                    sendTime("2", s);
+//                    sendTime("1", s);
 //                });
-//                d2Client.subscribe("/display/listmatches", (map, s) -> {
-//                    JSONArray matchArray = new JSONArray(s);
-//                    ArrayList<JSONObject> matches = new ArrayList<>();
-//                    for(int i = 0; i < matchArray.length(); i++) {
-//                        matches.add(matchArray.getJSONObject(i));
-//                    }
-//                    d2Matches = matches;
-//                    sendMatches();
-//                });
-//                d2Client.send("/display/getmatches","");
-//                d2Client.subscribe("/heartbeat", heartbeatListener(d2Client, d2Status));
-//
-//            } catch (IOException | LoginException e1) {
-//                e1.printStackTrace();
-//            }
-//        });
+
+                d2Loop = executor.scheduleAtFixedRate(() -> {
+                    try {
+                        d2Matches = d2Client.getMatches().stream().map(Match::toJson).collect(Collectors.toList());
+                        sendMatches();
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
+                }, 0, 5, TimeUnit.SECONDS);
+
+            } catch (Exception e1) {
+                e1.printStackTrace();
+            }
+        });
 
         Undertow server = Undertow.builder()
                 .addHttpListener(8888, "0.0.0.0")
                 .setHandler(Handlers.path()
                         .addPrefixPath("/load", exchange -> {
-//                            if(d0Client != null) {
-//                                d0Client.send("/display/getmatches","");
-//                            }
-//                            if(d1Client != null) {
-//                                d1Client.send("/display/getmatches","");
-//                            }
-//                            if(d2Client != null) {
-//                                d2Client.send("/display/getmatches","");
-//                            }
                             new Thread(DivisionSwitcher.this::sendAuxInfo).start();
+                            new Thread(DivisionSwitcher.this::sendMatches).start();
                         })
                         .addPrefixPath("/matchstream", Handlers.websocket((exchange, channel) -> {
                             websocket = channel;
@@ -345,6 +328,7 @@ public class DivisionSwitcher {
             spreadsheetId = sheetId.getText();
             new Thread(DivisionSwitcher.this::sendAuxInfo).start();
         });
+        enabledCheckBox.addActionListener(e -> new Thread(DivisionSwitcher.this::sendSingleStep).start());
     }
 
     private Listener heartbeatListener(Client client, JLabel status) {
@@ -403,6 +387,16 @@ public class DivisionSwitcher {
         JSONObject send = new JSONObject();
         send.put("data", data);
         send.put("type", "state");
+        for(WebSocketChannel socket : websocket.getPeerConnections()) {
+            WebSockets.sendText(send.toString(), socket, null);
+        }
+    }
+
+    private void sendSingleStep() {
+        if(websocket == null) return;
+        JSONObject send = new JSONObject();
+        send.put("data", enabledCheckBox.isSelected() ? 0 : 1);
+        send.put("type", "singleStep");
         for(WebSocketChannel socket : websocket.getPeerConnections()) {
             WebSockets.sendText(send.toString(), socket, null);
         }
@@ -476,19 +470,19 @@ public class DivisionSwitcher {
 
     private void sendD0DisplayMessage(String s, String m) {
         if(d0Client != null) {
-//            d0Client.send("/display/show", s + " " + m);
+            d0Client.sendDisplay(s, m);
         }
     }
 
     private void sendD1DisplayMessage(String s, String m) {
         if(d1Client != null) {
-//            d1Client.send("/display/show", s + " " + m);
+            d1Client.sendDisplay(s, m);
         }
     }
 
     private void sendD2DisplayMessage(String s, String m) {
         if(d2Client != null) {
-//            d2Client.send("/display/show", s + " " + m);
+            d2Client.sendDisplay(s, m);
         }
     }
 

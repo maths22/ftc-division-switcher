@@ -9,6 +9,7 @@ function createWebSocket(path) {
     return ret;
 }
 
+var matchSelectVal = '';
 var state = "prematch";
 var prev = [];
 var next = [];
@@ -17,6 +18,7 @@ var matches = [];
 var scores = {};
 var alliances = {};
 var auxInfo = {};
+var alwaysSingleStep = false;
 var time = {div: 'none'};
 
 function stateToLabel(state) {
@@ -28,30 +30,32 @@ function stateToLabel(state) {
     }
 }
 
+function singleStep(state) {
+    if(state === "prematch") {
+        return ["results", 0];
+    } else if(state === "results") {
+        return ["prematch", 1];
+    }
+}
+
 function getNextState() {
     var selectedMatch = $("#match-select").val();
     var phase = selectedMatch.replace(/[^A-Z]/g, '').substring(1);
     var nextMatch = matches[matches.findIndex(function(element) {return element === selectedMatch }) + 1];
     var haveD1AndD2 = matches.findIndex(function(element) { return element.indexOf("D1") >= 0 }) >= 0 &&
         matches.findIndex(function(element) { return element.indexOf("D2") >= 0 }) >= 0;
+    if(alwaysSingleStep || (phase !== 'Q' && nextSeries === thisSeries)) {
+        return singleStep(state);
+    }
     if(nextMatch) {
         var nextSeries = nextMatch.substring(0, nextMatch.lastIndexOf("-") + 1);
         var thisSeries = selectedMatch.substring(0, selectedMatch.lastIndexOf("-") + 1);
         if(phase !== 'Q' && nextSeries === thisSeries) {
-            if(state === "prematch") {
-                return ["results", 0];
-            } else if(state === "results") {
-                return ["prematch", 1];
-            }
-
+            return singleStep(state);
         }
     } else {
         if(phase === 'F' && !haveD1AndD2) {
-            if(state === "prematch") {
-                return ["results", 0];
-            } else if(state === "results") {
-                return ["prematch", 1];
-            }
+            return singleStep(state);
         }
     }
     if(state === "prematch") {
@@ -91,8 +95,7 @@ function getNextState() {
 }
 
 function updatePrevNextCur() {
-    var matchSelect = $("#match-select");
-    cur = [state, matchSelect.val()];
+    cur = [state, matchSelectVal];
     var nextState = getNextState();
     var nextMatch = undefined;
     var tryAgain = true;
@@ -241,6 +244,7 @@ function updatePrevNextCur() {
 
 function clickMatchPlayNext() {
     $("#match-select").val(next[1]);
+    matchSelectVal = $("#match-select").val();
     state = next[0];
     prev.push(cur);
     updatePrevNextCur();
@@ -254,6 +258,7 @@ function clickMatchPlayCur() {
 function clickMatchPlayPrev() {
     var elem = prev.pop();
     $("#match-select").val(elem[1]);
+    matchSelectVal = $("#match-select").val();
     state = elem[0];
     // console.log(state + ":" + elem[1]);
     updatePrevNextCur();
@@ -261,6 +266,7 @@ function clickMatchPlayPrev() {
 }
 
 function clickMatchPlayPrematch() {
+    matchSelectVal = $("#match-select").val();
     state = "prematch";
     prev.push(cur);
     updatePrevNextCur();
@@ -268,6 +274,7 @@ function clickMatchPlayPrematch() {
 }
 
 function clickMatchPlayTimer() {
+    matchSelectVal = $("#match-select").val();
     state = "timer";
     prev.push(cur);
     updatePrevNextCur();
@@ -275,6 +282,7 @@ function clickMatchPlayTimer() {
 }
 
 function clickMatchPlayResults() {
+    matchSelectVal = $("#match-select").val();
     state = "results";
     prev.push(cur);
     updatePrevNextCur();
@@ -322,6 +330,7 @@ $(function() {
         } else if(response.type === 'state') {
             var update = JSON.parse(response.data);
             $("#match-select").val(update[1]);
+            matchSelectVal = $("#match-select").val();
             state = update[0];
             // if(prev.length > 0 && (prev[prev.length-1][0] !== update[0] || prev[prev.length-1][1] !== update[1])) {
             //     prev.push(update);
@@ -332,6 +341,9 @@ $(function() {
             updatePrevNextCur();
         } else if(response.type === 'time') {
             time = response.data;
+            updatePrevNextCur();
+        } else if(response.type === 'singleStep') {
+            alwaysSingleStep = parseInt(response.data);
             updatePrevNextCur();
         }
 

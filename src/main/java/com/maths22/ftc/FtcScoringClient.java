@@ -56,10 +56,37 @@ public class FtcScoringClient {
         return null;
     }
 
+    private JsonNode post(String path, String payload) {
+        try {
+                HttpResponse<JsonNode> resp = Unirest.post("http://" + basePath + "/" +  path)
+                    .body(payload)
+                    .asJson();
+
+            if(StatusCodes.OK == resp.getStatus()) {
+                return resp.getBody();
+            }
+        } catch (UnirestException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+
+    public void sendDisplay(String screen, String match) {
+        if(basePath == null) {
+            return;
+        }
+        //TODO special case rankings, blank
+        JSONObject obj = new JSONObject();
+        obj.put("screen", screen);
+        obj.put("match", match.replaceFirst("-",""));
+        post("_il_api/" + event + "/set_display/", obj.toString());
+    }
 
     public List<Match> getMatches() {
         List<Match> ret = new ArrayList<>();
         ret.addAll(getQualMatches());
+        ret.addAll(getElimMatches());
         return ret;
     }
 
@@ -88,6 +115,35 @@ public class FtcScoringClient {
                 if (redScore < blueScore) desc = 'B';
                 match.setScore(redScore + "-" + blueScore + " " + desc);
              }
+            ret.add(match);
+        }
+        return ret;
+    }
+
+    private List<Match> getElimMatches() {
+        List<Match> ret = new ArrayList<>();
+        JSONArray matches = Objects.requireNonNull(get("_il_api/" + event + "/elim_matches/")).getArray();
+        for(Object ob : matches) {
+            JSONObject m = (JSONObject) ob;
+            Match match = new Match();
+            String matchStr = m.getString("match");
+            matchStr = String.join("-", matchStr.split("(?<=[A-Z])(?=[0-9])"));
+            match.setId("D" + divisionId + ": " + matchStr);
+            List<Team> redAlliance = new ArrayList<>();
+            List<Team> blueAlliance = new ArrayList<>();
+            redAlliance.add(getTeam(m.getJSONObject("red").getInt("captain")));
+            redAlliance.add(getTeam(m.getJSONObject("red").getInt("pick1")));
+            if (m.getJSONObject("red").getInt("pick2") != -1) {
+                redAlliance.add(getTeam(m.getJSONObject("red").getInt("pick2")));
+            }
+            blueAlliance.add(getTeam(m.getJSONObject("blue").getInt("captain")));
+            blueAlliance.add(getTeam(m.getJSONObject("blue").getInt("pick1")));
+            if (m.getJSONObject("blue").getInt("pick2") != -1) {
+                blueAlliance.add(getTeam(m.getJSONObject("blue").getInt("pick2")));
+            }
+            match.setRedAlliance(redAlliance);
+            match.setBlueAlliance(blueAlliance);
+            match.setScore(m.has("winString") ? m.getString("winString") : null);
             ret.add(match);
         }
         return ret;
