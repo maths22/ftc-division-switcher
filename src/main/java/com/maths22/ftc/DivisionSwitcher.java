@@ -214,6 +214,7 @@ public class DivisionSwitcher {
                         .addPrefixPath("/load", exchange -> {
                             new Thread(DivisionSwitcher.this::sendAuxInfo).start();
                             new Thread(DivisionSwitcher.this::sendMatches).start();
+                            new Thread(DivisionSwitcher.this::sendSingleStep).start();
                         })
                         .addPrefixPath("/matchstream", Handlers.websocket((exchange, channel) -> {
                             websocket = channel;
