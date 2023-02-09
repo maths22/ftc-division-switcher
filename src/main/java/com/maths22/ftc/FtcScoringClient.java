@@ -1,22 +1,24 @@
 package com.maths22.ftc;
 
-import com.mashape.unirest.http.HttpResponse;
-import com.mashape.unirest.http.JsonNode;
-import com.mashape.unirest.http.Unirest;
-import com.mashape.unirest.http.exceptions.UnirestException;
+import com.google.common.collect.ImmutableList;
 import io.undertow.util.StatusCodes;
-import org.json.JSONArray;
-import org.json.JSONObject;
+import kong.unirest.*;
+import kong.unirest.json.JSONArray;
+import kong.unirest.json.JSONObject;
 
 import java.util.*;
 
 public class FtcScoringClient {
+    private final UnirestInstance unirest;
+    private boolean loggedIn;
     private String basePath;
     private String event;
     private final int divisionId;
 
     public FtcScoringClient(int divisionId) {
         this.divisionId = divisionId;
+        this.unirest = Unirest.spawnInstance();
+        this.loggedIn = false;
     }
 
 
@@ -34,17 +36,39 @@ public class FtcScoringClient {
 
     public void setEvent(String event) {
         this.event = event;
+        loggedIn = false;
     }
 
     public List<String> getEvents() {
         List<String> events = new ArrayList<>();
-        get("apiv1/events").getObject().getJSONArray("eventCodes").forEach((obj) -> events.add(String.valueOf(obj)));
+        get("api/v1/events").getObject().getJSONArray("eventCodes").forEach((obj) -> events.add(String.valueOf(obj)));
         return events;
+    }
+
+    public boolean login(String username, String password) {
+        HttpResponse<String> response = unirest.post("http://" + basePath + "/callback/")
+                .field("username", username)
+                .field("password", password == null ? "" : password)
+                .field("submit", "Login")
+                .field("client_name", "FormClient")
+                .asString();
+        if(response.getBody().contains("alert-danger")) {
+            return false;
+        }
+
+        try {
+            get("/event/" + event + "/control/schedule/");
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return false;
+        }
+        loggedIn = true;
+        return true;
     }
 
     private JsonNode get(String path) {
         try {
-            HttpResponse<JsonNode> resp = Unirest.get("http://" + basePath + "/" +  path)
+            HttpResponse<JsonNode> resp = unirest.get("http://" + basePath + "/" +  path)
                     .asJson();
 
             if(StatusCodes.OK == resp.getStatus()) {
@@ -58,7 +82,7 @@ public class FtcScoringClient {
 
     private JsonNode post(String path, String payload) {
         try {
-                HttpResponse<JsonNode> resp = Unirest.post("http://" + basePath + "/" +  path)
+                HttpResponse<JsonNode> resp = unirest.post("http://" + basePath + "/" +  path)
                     .body(payload)
                     .asJson();
 
@@ -71,16 +95,60 @@ public class FtcScoringClient {
         return null;
     }
 
-
-    public void sendDisplay(String screen, String match) {
-        if(basePath == null) {
+    public void showSponsors() {
+        if(!loggedIn) {
             return;
         }
-        //TODO special case rankings, blank
-        JSONObject obj = new JSONObject();
-        obj.put("screen", screen);
-        obj.put("match", match.replaceFirst("-",""));
-        post("_il_api/" + event + "/set_display/", obj.toString());
+        post("event/" + event + "/control/sponsors/", "");
+    }
+
+    public void showBracket() {
+        if(!loggedIn) {
+            return;
+        }
+        post("event/" + event + "/control/bracket/", "");
+    }
+
+    public void showSelection() {
+        if(!loggedIn) {
+            return;
+        }
+        post("event/" + event + "/control/selection/show/", "");
+    }
+
+    public void showRanks() {
+        if(!loggedIn) {
+            return;
+        }
+        post("event/" + event + "/control/ranks/", "");
+    }
+
+    public void basicCommand(String cmd) {
+        if(!loggedIn) {
+            return;
+        }
+        post("event/" + event + "/control/command/" + cmd + "/", "");
+    }
+
+    public void showMessage(String m) {
+        if(!loggedIn) {
+            return;
+        }
+        unirest.post("http://" + basePath + "/event/" + event + "/control/message/").field("msg", m).asEmpty();
+    }
+
+    public void showMatch(String m) {
+        if(!loggedIn) {
+            return;
+        }
+        post("event/" + event + "/control/preview/" + m + "/", "");
+    }
+
+    public void showResults(String m) {
+        if(!loggedIn) {
+            return;
+        }
+        post("event/" + event + "/control/results/" + m + "/", "");
     }
 
     public List<Match> getMatches() {
@@ -92,12 +160,13 @@ public class FtcScoringClient {
 
     private List<Match> getQualMatches() {
         List<Match> ret = new ArrayList<>();
-        JSONArray matches = Objects.requireNonNull(get("apiv1/events/" + event + "/matches/")).getObject().getJSONArray("matches");
+        JSONArray matches = Objects.requireNonNull(get("api/v1/events/" + event + "/matches/")).getObject().getJSONArray("matches");
         for(Object ob : matches) {
             JSONObject m = (JSONObject) ob;
             Match match = new Match();
             int num = m.getInt("matchNumber");
             match.setId("D" + divisionId + ": Q-" + num);
+            match.setNum(num);
             List<Team> redAlliance = new ArrayList<>();
             List<Team> blueAlliance = new ArrayList<>();
             redAlliance.add(getTeam(m.getJSONObject("red").getInt("team1")));
@@ -107,7 +176,7 @@ public class FtcScoringClient {
             match.setRedAlliance(redAlliance);
             match.setBlueAlliance(blueAlliance);
             if(m.getBoolean("finished")) {
-                JSONObject details = Objects.requireNonNull(get("apiv1/events/" + event + "/matches/" + num)).getObject();
+                JSONObject details = Objects.requireNonNull(get("api/v1/events/" + event + "/matches/" + num + "/")).getObject();
                 int redScore = details.getInt("redScore");
                 int blueScore = details.getInt("blueScore");
                 char desc = 'T';
@@ -122,28 +191,50 @@ public class FtcScoringClient {
 
     private List<Match> getElimMatches() {
         List<Match> ret = new ArrayList<>();
-        JSONArray matches = Objects.requireNonNull(get("_il_api/" + event + "/elim_matches/")).getArray();
+        JsonNode elimsMatches = get("api/v2/events/" + event + "/elims/");
+        if(elimsMatches == null) {
+            return ImmutableList.of();
+        }
+        JSONArray matches = Objects.requireNonNull(elimsMatches).getObject().getJSONArray("matches");
+        JSONArray alliances = Objects.requireNonNull(get("api/v1/events/" + event + "/elim/alliances/")).getObject().getJSONArray("alliances");
+        Map<Integer, JSONObject> allianceMap = new HashMap<>();
+        alliances.forEach(ob -> {
+            JSONObject a = (JSONObject) ob;
+            int seed = a.getInt("seed");
+            allianceMap.put(seed, a);
+        });
         for(Object ob : matches) {
             JSONObject m = (JSONObject) ob;
             Match match = new Match();
-            String matchStr = m.getString("match");
-            matchStr = String.join("-", matchStr.split("(?<=[A-Z])(?=[0-9])"));
-            match.setId("D" + divisionId + ": " + matchStr);
+            String name = m.getString("matchName");
+            match.setId("D" + divisionId + ": " + name);
+            int num = m.getInt("matchNumber");
+            match.setNum(num);
             List<Team> redAlliance = new ArrayList<>();
             List<Team> blueAlliance = new ArrayList<>();
-            redAlliance.add(getTeam(m.getJSONObject("red").getInt("captain")));
-            redAlliance.add(getTeam(m.getJSONObject("red").getInt("pick1")));
-            if (m.getJSONObject("red").getInt("pick2") != -1) {
-                redAlliance.add(getTeam(m.getJSONObject("red").getInt("pick2")));
+            JSONObject redAll = allianceMap.get(m.getJSONObject("red").getInt("seed"));
+            JSONObject blueAll = allianceMap.get(m.getJSONObject("blue").getInt("seed"));
+            redAlliance.add(getTeam(redAll.getInt("captain")));
+            redAlliance.add(getTeam(redAll.getInt("pick1")));
+            if (redAll.getInt("pick2") != -1) {
+                redAlliance.add(getTeam(redAll.getInt("pick2")));
             }
-            blueAlliance.add(getTeam(m.getJSONObject("blue").getInt("captain")));
-            blueAlliance.add(getTeam(m.getJSONObject("blue").getInt("pick1")));
-            if (m.getJSONObject("blue").getInt("pick2") != -1) {
-                blueAlliance.add(getTeam(m.getJSONObject("blue").getInt("pick2")));
+            blueAlliance.add(getTeam(blueAll.getInt("captain")));
+            blueAlliance.add(getTeam(blueAll.getInt("pick1")));
+            if (blueAll.getInt("pick2") != -1) {
+                blueAlliance.add(getTeam(blueAll.getInt("pick2")));
             }
             match.setRedAlliance(redAlliance);
             match.setBlueAlliance(blueAlliance);
-            match.setScore(m.has("winString") ? m.getString("winString") : null);
+            if(m.getBoolean("finished")) {
+                JSONObject details = Objects.requireNonNull(get("api/v2/events/" + event + "/elims/" + name.toLowerCase() + "/")).getObject();
+                int redScore = details.getInt("redScore");
+                int blueScore = details.getInt("blueScore");
+                char desc = 'T';
+                if (redScore > blueScore) desc = 'R';
+                if (redScore < blueScore) desc = 'B';
+                match.setScore(redScore + "-" + blueScore + " " + desc);
+            }
             ret.add(match);
         }
         return ret;
@@ -155,7 +246,7 @@ public class FtcScoringClient {
         if(id == -1) return null;
         Team ret = teams.get(id);
         if(ret == null) {
-            JSONObject tm = Objects.requireNonNull(get("apiv1/teams/" + id)).getObject();
+            JSONObject tm = Objects.requireNonNull(get("api/v1/events/" + event + "/teams/" + id)).getObject();
             if(tm.has("errorCode") && "NO_SUCH_TEAM".equals(tm.getString("errorCode"))) {
                 ret = new Team();
                 ret.setNumber(id);

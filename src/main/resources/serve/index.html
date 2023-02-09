@@ -120,17 +120,25 @@
                     <h3>Elimination Ladder</h3>
                     <button type="button" class="btn btn-default" onclick="sendCommand(['elimination', 'D1'])">D1</button>
                     <button type="button" class="btn btn-default" onclick="sendCommand(['elimination', 'D2'])">D2</button><br/>
-                    <h3>Timeout</h3>
-                    <button type="button" class="btn btn-default" onclick="sendCommand(['announcement', 'D1'])">D1</button>
-                    <button type="button" class="btn btn-default" onclick="sendCommand(['announcement', 'D2'])">D2</button><br/>
+                    <h3>Online Results</h3>
+                    <button type="button" class="btn btn-default" onclick="sendCommand(['online', 'D1'])">D1</button>
+                    <button type="button" class="btn btn-default" onclick="sendCommand(['online', 'D2'])">D2</button><br/>
                 </div>
                 <div class="col-sm-6">
+<!--                    case "online":-->
                     <h3>Sponsor Listing</h3>
                     <button type="button" class="btn btn-default" onclick="sendCommand(['sponsor', 'D1'])">Show</button><br/>
                     <h3>Blank</h3>
                     <button type="button" class="btn btn-default" onclick="sendCommand(['blank', 'D1'])">Show</button><br/>
-                    <!--<h3>Awards</h3>-->
-                    <!--<button type="button" class="btn btn-default" onclick="sendCommand(['awards', 'D1'])">Show</button><br/>-->
+                    <h3>Video only</h3>
+                    <button type="button" class="btn btn-default" onclick="sendCommand(['video', 'D1'])">Show</button><br/>
+                    <h3>Wi-Fi reminder</h3>
+                    <button type="button" class="btn btn-default" onclick="sendCommand(['wifi', 'D1'])">Show</button><br/>
+                    <h3>Audience Key</h3>
+                    <button type="button" class="btn btn-default" onclick="sendCommand(['key', 'D1'])">Show</button><br/>
+                    <h3>Announcement</h3>
+                    <textarea id="announcementText"></textarea>
+                    <button type="button" class="btn btn-default" onclick="sendCommand(['announcement', 'D1', document.getElementById('announcementText').value])">Show</button><br/>
                 </div>
             </div>
         </div>

@@ -38,8 +38,17 @@ public class Match {
         this.blueAlliance = blueAlliance;
     }
 
+    public int getNum() {
+        return num;
+    }
+
+    public void setNum(int num) {
+        this.num = num;
+    }
+
     private String score;
     private String id;
+    private int num;
     private List<Team> redAlliance;
     private List<Team> blueAlliance;
 
@@ -47,6 +56,7 @@ public class Match {
         JSONObject ret = new JSONObject();
         ret.put("score", score);
         ret.put("id", id);
+        ret.put("num", num);
         ret.put("redAlliance", redAlliance.stream().map(Team::toJson).collect(Collectors.toList()));
         ret.put("blueAlliance", blueAlliance.stream().map(Team::toJson).collect(Collectors.toList()));
         return ret;

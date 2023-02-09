@@ -18,6 +18,7 @@ var matches = [];
 var scores = {};
 var alliances = {};
 var auxInfo = {};
+var matchNums = {};
 var alwaysSingleStep = false;
 var time = {div: 'none'};
 
@@ -100,6 +101,7 @@ function updatePrevNextCur() {
     var nextMatch = undefined;
     var tryAgain = true;
     var lastTry = false;
+    var matchSelect = $("#match-select");
     while (tryAgain) {
         if (lastTry) tryAgain = false;
         if (nextState[1] === -1) {
@@ -291,7 +293,7 @@ function clickMatchPlayResults() {
 
 function sendCommand(args) {
 
-    $.get("/api", {division: args[1][1], display: args[0], match: args[1].substring(4), data: JSON.stringify(args)});
+    $.get("/api", {division: args[1][1], display: args[0], match: matchNums[args[1]] || args[2], data: JSON.stringify(args)});
 }
 
 $(function() {
@@ -304,12 +306,14 @@ $(function() {
             var fullMatches = response.data;
             scores = {};
             alliances = {};
+            matchNums = {};
             $.each(fullMatches, function(_, m) {
                 scores[m.id] = m.score;
                 var myAlliances = {};
                 myAlliances['red'] = m.redAlliance;
                 myAlliances['blue'] = m.blueAlliance;
                 alliances[m.id] = myAlliances;
+                matchNums[m.id] = m.num;
             });
             matches = fullMatches.map(function(val) {return val.id});
             var matchSelect = $("#match-select");

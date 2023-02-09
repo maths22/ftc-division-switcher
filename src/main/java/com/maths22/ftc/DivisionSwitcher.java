@@ -146,6 +146,9 @@ public class DivisionSwitcher {
                     }
                 }, 0, 5, TimeUnit.SECONDS);
 
+                ScoringLogin dialog = new ScoringLogin(d0Client);
+                dialog.pack();
+                dialog.setVisible(true);
             } catch (Exception e1) {
                 e1.printStackTrace();
             }
@@ -170,6 +173,9 @@ public class DivisionSwitcher {
                     }
                 }, 0, 5, TimeUnit.SECONDS);
 
+                ScoringLogin dialog = new ScoringLogin(d1Client);
+                dialog.pack();
+                dialog.setVisible(true);
             } catch (Exception e1) {
                 e1.printStackTrace();
             }
@@ -194,6 +200,9 @@ public class DivisionSwitcher {
                     }
                 }, 0, 5, TimeUnit.SECONDS);
 
+                ScoringLogin dialog = new ScoringLogin(d2Client);
+                dialog.pack();
+                dialog.setVisible(true);
             } catch (Exception e1) {
                 e1.printStackTrace();
             }
@@ -217,19 +226,22 @@ public class DivisionSwitcher {
                             }
                             String target = exchange.getQueryParameters().get("division").peekFirst();
                             String display = exchange.getQueryParameters().get("display").peekFirst();
-                            String match = exchange.getQueryParameters().get("match").peekFirst();
+                            String match = "";
+                            if(exchange.getQueryParameters().containsKey("match")) {
+                                match = exchange.getQueryParameters().get("match").peekFirst();
+                            }
                             if(target == null) {
                                 exchange.setStatusCode(400);
                                 return;
                             }
                             if(target.equals("0") || (target.equals("1") && match.isEmpty())) {
-                                sendD0DisplayMessage(display, match);
+                                sendDisplayMessage(d0Client,display, match);
                             }
                             if(target.equals("1")) {
-                                sendD1DisplayMessage(display, match);
+                                sendDisplayMessage(d1Client, display, match);
                             }
                             if(target.equals("2")) {
-                                sendD2DisplayMessage(display, match);
+                                sendDisplayMessage(d2Client, display, match);
                             }
 
                             if(target.equals("1") || target.equals("2") || target.equals("r")) {
@@ -436,8 +448,8 @@ public class DivisionSwitcher {
 
         interleaveMatches(matches, itA, itB);
 
-        itA = d1Matches.stream().filter((m) -> m.getString("id").contains(" SF-")).iterator();
-        itB = d2Matches.stream().filter((m) -> m.getString("id").contains(" SF-")).iterator();
+        itA = d1Matches.stream().filter((m) -> m.getString("id").contains(" SF")).iterator();
+        itB = d2Matches.stream().filter((m) -> m.getString("id").contains(" SF")).iterator();
 
         interleaveMatches(matches, itA, itB);
 
@@ -468,21 +480,37 @@ public class DivisionSwitcher {
         }
     }
 
-    private void sendD0DisplayMessage(String s, String m) {
-        if(d0Client != null) {
-            d0Client.sendDisplay(s, m);
-        }
-    }
-
-    private void sendD1DisplayMessage(String s, String m) {
-        if(d1Client != null) {
-            d1Client.sendDisplay(s, m);
-        }
-    }
-
-    private void sendD2DisplayMessage(String s, String m) {
-        if(d2Client != null) {
-            d2Client.sendDisplay(s, m);
+    private void sendDisplayMessage(FtcScoringClient client, String s, String m) {
+        if(client != null) {
+            switch (s) {
+                case "prematch":
+                    client.showMatch(m);
+                    break;
+                case "results":
+                    client.showResults(m);
+                    break;
+                case "rankings":
+                    client.showRanks();
+                    break;
+                case "announcement":
+                    client.showMessage(m);
+                    break;
+                case "alliance":
+                    client.showSelection();
+                    break;
+                case "sponsor":
+                    client.showSponsors();
+                    break;
+                case "elimination":
+                    client.showBracket();
+                case "wifi":
+                case "blank":
+                case "video":
+                case "key":
+                case "online":
+                    client.basicCommand(s);
+                    break;
+            }
         }
     }
 
