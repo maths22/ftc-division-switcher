@@ -1,0 +1,69 @@
+plugins {
+    id 'application'
+    id 'maven-publish'
+}
+
+repositories {
+    mavenLocal()
+    maven {
+        url = uri('https://repo.maven.apache.org/maven2/')
+    }
+    maven {
+        url "https://www.jetbrains.com/intellij-repository/releases/"
+    }
+    maven {
+        url "https://cache-redirector.jetbrains.com/intellij-dependencies"
+    }
+}
+
+group = 'com.maths22.ftc'
+version = '1.0-SNAPSHOT'
+description = 'division-switcher'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+application {
+    mainClass = "com.maths22.ftc.DivisionSwitcher"
+}
+
+configurations {
+    antBuild
+}
+
+dependencies {
+    implementation 'com.konghq:unirest-java:3.13.6'
+    implementation 'io.undertow:undertow-core:1.4.12.Final'
+    implementation 'io.undertow:undertow-websockets-jsr:1.4.12.Final'
+    implementation 'org.json:json:20171018'
+    implementation 'com.google.code.gson:gson:2.8.2'
+    implementation 'com.google.api-client:google-api-client:1.23.0'
+    implementation 'com.google.oauth-client:google-oauth-client-jetty:1.23.0'
+    implementation 'com.google.apis:google-api-services-sheets:v4-rev500-1.23.0'
+
+    implementation group: "com.jetbrains.intellij.java", name: 'java-gui-forms-rt', version: '223.8214.59'
+
+    antBuild group: 'com.jetbrains.intellij.java', name: 'java-compiler-ant-tasks', version: '223.8214.59'
+
+    implementation files('lib/gozirra-0.4.1.jar')
+}
+
+
+compileJava {
+    inputs.files(fileTree('src/main/java').matching {
+        include '**/*.form'
+    })
+    doLast {
+        ant.taskdef name: 'instrumentIdeaExtensions', classname: 'com.intellij.ant.InstrumentIdeaExtensions', classpath: configurations.antBuild.asPath
+        ant.instrumentIdeaExtensions(
+                srcDir: 'src/main/java',
+                destDir: sourceSets.main.output.classesDirs[0],
+                bootClassPath: sourceSets.main.runtimeClasspath.asPath,
+                includeantruntime: false
+        )
+    }
+}
+
