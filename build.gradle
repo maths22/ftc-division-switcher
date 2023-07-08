@@ -35,14 +35,15 @@ configurations {
 }
 
 dependencies {
+    implementation group: "io.javalin", name: "javalin", version: "5.6.1"
+
     implementation 'com.konghq:unirest-java:3.13.6'
-    implementation 'io.undertow:undertow-core:1.4.12.Final'
-    implementation 'io.undertow:undertow-websockets-jsr:1.4.12.Final'
     implementation 'org.json:json:20171018'
     implementation 'com.google.code.gson:gson:2.8.2'
     implementation 'com.google.api-client:google-api-client:1.23.0'
     implementation 'com.google.oauth-client:google-oauth-client-jetty:1.23.0'
     implementation 'com.google.apis:google-api-services-sheets:v4-rev500-1.23.0'
+    implementation group: "org.slf4j", name: "slf4j-simple", version: "2.0.7"
 
     implementation group: "com.jetbrains.intellij.java", name: 'java-gui-forms-rt', version: '223.8214.59'
 

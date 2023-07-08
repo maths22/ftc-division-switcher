@@ -1,21 +1,20 @@
 package com.maths22.ftc;
 
-import io.undertow.Handlers;
-import io.undertow.Undertow;
-import io.undertow.server.handlers.resource.ClassPathResourceManager;
-import io.undertow.util.Headers;
-import io.undertow.websockets.core.WebSocketChannel;
-import io.undertow.websockets.core.WebSockets;
+import io.javalin.Javalin;
+import io.javalin.http.HttpStatus;
+import io.javalin.http.staticfiles.Location;
 import net.ser1.stomp.Client;
 import net.ser1.stomp.Listener;
+import org.eclipse.jetty.websocket.api.Session;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.security.auth.login.LoginException;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -30,11 +29,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 public class DivisionSwitcher {
+    private static final Logger LOG = LoggerFactory.getLogger(DivisionSwitcher.class);
+    private final Set<Session> wsClients = new HashSet<>();
     private ScheduledFuture<?> d0Loop = null;
     private ScheduledFuture<?> d1Loop = null;
     private ScheduledFuture<?> d2Loop = null;
     private String data;
-    private WebSocketChannel websocket;
     private JButton connectButton;
     private JTextField textField1;
     private JRadioButton division1RadioButton;
@@ -208,62 +208,65 @@ public class DivisionSwitcher {
             }
         });
 
-        Undertow server = Undertow.builder()
-                .addHttpListener(8888, "0.0.0.0")
-                .setHandler(Handlers.path()
-                        .addPrefixPath("/load", exchange -> {
-                            new Thread(DivisionSwitcher.this::sendAuxInfo).start();
-                            new Thread(DivisionSwitcher.this::sendMatches).start();
-                            new Thread(DivisionSwitcher.this::sendSingleStep).start();
-                        })
-                        .addPrefixPath("/matchstream", Handlers.websocket((exchange, channel) -> {
-                            websocket = channel;
-                            channel.resumeReceives();
-                        }))
-                        .addPrefixPath("/api", exchange -> {
-                            if(exchange.getQueryParameters().get("division") == null) {
-                                exchange.setStatusCode(400);
-                                return;
-                            }
-                            String target = exchange.getQueryParameters().get("division").peekFirst();
-                            String display = exchange.getQueryParameters().get("display").peekFirst();
-                            String match = "";
-                            if(exchange.getQueryParameters().containsKey("match")) {
-                                match = exchange.getQueryParameters().get("match").peekFirst();
-                            }
-                            if(target == null) {
-                                exchange.setStatusCode(400);
-                                return;
-                            }
-                            if(target.equals("0") || (target.equals("1") && match.isEmpty())) {
-                                sendDisplayMessage(d0Client,display, match);
-                            }
-                            if(target.equals("1")) {
-                                sendDisplayMessage(d1Client, display, match);
-                            }
-                            if(target.equals("2")) {
-                                sendDisplayMessage(d2Client, display, match);
-                            }
+        Javalin app = Javalin.create((config) -> {
+                    config.staticFiles.add(sfc -> {
+                        sfc.directory = "/serve";
+                        sfc.location = Location.CLASSPATH;
+                    });
+                })
+                .get("/load", ctx -> {
+                    new Thread(this::sendAuxInfo).start();
+                    new Thread(this::sendMatches).start();
+                    new Thread(this::sendSingleStep).start();
+                })
+                .get("/api", ctx -> {
+                    if(ctx.queryParam("division") == null) {
+                        ctx.status(HttpStatus.BAD_REQUEST);
+                        return;
+                    }
+                    String target = ctx.queryParam("division");
+                    String display = ctx.queryParam("display");
+                    String match = "";
+                    if(ctx.queryParamMap().containsKey("match")) {
+                        match = ctx.queryParam("match");
+                    }
+                    if(target == null) {
+                        ctx.status(HttpStatus.BAD_REQUEST);
+                        return;
+                    }
 
-                            if(target.equals("1") || target.equals("2") || target.equals("r")) {
-                                sendShowMessage(target);
-                            } else {
-                                exchange.setStatusCode(400);
-                                return;
-                            }
+                    if(target.equals("0") || (target.equals("1") && match.isEmpty())) {
+                        sendDisplayMessage(d0Client,display, match);
+                    }
+                    if(target.equals("1")) {
+                        sendDisplayMessage(d1Client, display, match);
+                    }
+                    if(target.equals("2")) {
+                        sendDisplayMessage(d2Client, display, match);
+                    }
 
-                            data = exchange.getQueryParameters().get("data").peekFirst();
-                            sendState();
+                    if(target.equals("1") || target.equals("2") || target.equals("r")) {
+                        sendShowMessage(target);
+                    } else {
+                        ctx.status(HttpStatus.BAD_REQUEST);
+                        return;
+                    }
 
-                            exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/plain");
-                            exchange.getResponseSender().send("Updated");
+                    data = ctx.queryParam("data");
+                    sendState();
 
-                        })
-                        .addPrefixPath("/",
-                                Handlers.resource(new ClassPathResourceManager(this.getClass().getClassLoader(), "serve")))
-                )
-                .build();
-        server.start();
+                    ctx.contentType("text/plain");
+                    ctx.result("Updated");
+                })
+                .ws("/matchstream", (cfg) -> {
+                    cfg.onConnect((ctx) -> {
+                        wsClients.add(ctx.session);
+                    });
+                    cfg.onClose((ctx) -> {
+                        wsClients.remove(ctx.session);
+                    });
+                })
+                .start(8888);
         Timer timer = new Timer();
         timer.schedule(new TimerTask() {
             @Override
@@ -381,42 +384,53 @@ public class DivisionSwitcher {
         JSONObject send = new JSONObject();
         send.put("type", "time");
         send.put("data", data);
-        if(websocket == null) return;
-        for(WebSocketChannel socket : websocket.getPeerConnections()) {
-            WebSockets.sendText(send.toString(), socket, null);
+        for(Session socket : wsClients) {
+            try {
+                socket.getRemote().sendString(send.toString());
+            } catch (IOException e) {
+                LOG.warn("Failed to send time", e);
+            }
         }
     }
 
     private void ping() {
-        if(websocket == null) return;
-        for(WebSocketChannel socket : websocket.getPeerConnections()) {
-            WebSockets.sendText("ping", socket, null);
+        for(Session socket : wsClients) {
+            try {
+                socket.getRemote().sendString("ping");
+            } catch (IOException e) {
+                LOG.warn("Failed to ping", e);
+            }
         }
     }
 
     private void sendState() {
-        if(websocket == null) return;
         if(data == null) return;
         JSONObject send = new JSONObject();
         send.put("data", data);
         send.put("type", "state");
-        for(WebSocketChannel socket : websocket.getPeerConnections()) {
-            WebSockets.sendText(send.toString(), socket, null);
+        for(Session socket : wsClients) {
+            try {
+                socket.getRemote().sendString(send.toString());
+            } catch (IOException e) {
+                LOG.warn("Failed to send state", e);
+            }
         }
     }
 
     private void sendSingleStep() {
-        if(websocket == null) return;
         JSONObject send = new JSONObject();
         send.put("data", enabledCheckBox.isSelected() ? 0 : 1);
         send.put("type", "singleStep");
-        for(WebSocketChannel socket : websocket.getPeerConnections()) {
-            WebSockets.sendText(send.toString(), socket, null);
+        for(Session socket : wsClients) {
+            try {
+                socket.getRemote().sendString(send.toString());
+            } catch (IOException e) {
+                LOG.warn("Failed to send step", e);
+            }
         }
     }
 
     private void sendAuxInfo() {
-        if(websocket == null) return;
         if(spreadsheetId == null || spreadsheetId.isEmpty()) return;
         try {
             JSONObject send = new JSONObject();
@@ -426,8 +440,8 @@ public class DivisionSwitcher {
             data.put("entries", res.getEntries());
             send.put("data", data);
             send.put("type", "auxInfo");
-            for(WebSocketChannel socket : websocket.getPeerConnections()) {
-                WebSockets.sendText(send.toString(), socket, null);
+            for(Session socket : wsClients) {
+                socket.getRemote().sendString(send.toString());
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -449,8 +463,8 @@ public class DivisionSwitcher {
 
         interleaveMatches(matches, itA, itB);
 
-        itA = d1Matches.stream().filter((m) -> m.getString("id").contains(" SF")).iterator();
-        itB = d2Matches.stream().filter((m) -> m.getString("id").contains(" SF")).iterator();
+        itA = d1Matches.stream().filter((m) -> m.getString("id").contains(" R")).iterator();
+        itB = d2Matches.stream().filter((m) -> m.getString("id").contains(" R")).iterator();
 
         interleaveMatches(matches, itA, itB);
 
@@ -465,11 +479,13 @@ public class DivisionSwitcher {
         JSONObject send = new JSONObject();
         send.put("data", array);
         send.put("type", "matchData");
-        if(websocket != null) {
-            for (WebSocketChannel socket : websocket.getPeerConnections()) {
-                WebSockets.sendText(send.toString(), socket, null);
+
+        for(Session socket : wsClients) {
+            try {
+                socket.getRemote().sendString(send.toString());
+            } catch (IOException e) {
+                LOG.warn("Failed to send matches", e);
             }
-            WebSockets.sendText(send.toString(), websocket, null);
         }
         sendState();
     }

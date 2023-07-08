@@ -1,7 +1,6 @@
 package com.maths22.ftc;
 
 import com.google.common.collect.ImmutableList;
-import io.undertow.util.StatusCodes;
 import kong.unirest.*;
 import kong.unirest.json.JSONArray;
 import kong.unirest.json.JSONObject;
@@ -71,7 +70,7 @@ public class FtcScoringClient {
             HttpResponse<JsonNode> resp = unirest.get("http://" + basePath + "/" +  path)
                     .asJson();
 
-            if(StatusCodes.OK == resp.getStatus()) {
+            if(HttpStatus.OK == resp.getStatus()) {
                 return resp.getBody();
             }
         } catch (UnirestException e) {
@@ -86,7 +85,7 @@ public class FtcScoringClient {
                     .body(payload)
                     .asJson();
 
-            if(StatusCodes.OK == resp.getStatus()) {
+            if(HttpStatus.OK == resp.getStatus()) {
                 return resp.getBody();
             }
         } catch (UnirestException e) {
@@ -171,8 +170,10 @@ public class FtcScoringClient {
             List<Team> blueAlliance = new ArrayList<>();
             redAlliance.add(getTeam(m.getJSONObject("red").getInt("team1")));
             redAlliance.add(getTeam(m.getJSONObject("red").getInt("team2")));
+            redAlliance.add(getTeam(m.getJSONObject("red").getInt("team3")));
             blueAlliance.add(getTeam(m.getJSONObject("blue").getInt("team1")));
             blueAlliance.add(getTeam(m.getJSONObject("blue").getInt("team2")));
+            blueAlliance.add(getTeam(m.getJSONObject("blue").getInt("team3")));
             match.setRedAlliance(redAlliance);
             match.setBlueAlliance(blueAlliance);
             if(m.getBoolean("finished")) {
@@ -216,13 +217,15 @@ public class FtcScoringClient {
             JSONObject blueAll = allianceMap.get(m.getJSONObject("blue").getInt("seed"));
             redAlliance.add(getTeam(redAll.getInt("captain")));
             redAlliance.add(getTeam(redAll.getInt("pick1")));
-            if (redAll.getInt("pick2") != -1) {
-                redAlliance.add(getTeam(redAll.getInt("pick2")));
+            redAlliance.add(getTeam(redAll.getInt("pick2")));
+            if (redAll.getInt("backup") > 0) {
+                redAlliance.add(getTeam(redAll.getInt("backup")));
             }
             blueAlliance.add(getTeam(blueAll.getInt("captain")));
             blueAlliance.add(getTeam(blueAll.getInt("pick1")));
-            if (blueAll.getInt("pick2") != -1) {
-                blueAlliance.add(getTeam(blueAll.getInt("pick2")));
+            blueAlliance.add(getTeam(blueAll.getInt("pick2")));
+            if (blueAll.getInt("backup") > 0) {
+                blueAlliance.add(getTeam(blueAll.getInt("backup")));
             }
             match.setRedAlliance(redAlliance);
             match.setBlueAlliance(blueAlliance);
@@ -246,7 +249,8 @@ public class FtcScoringClient {
         if(id == -1) return null;
         Team ret = teams.get(id);
         if(ret == null) {
-            JSONObject tm = Objects.requireNonNull(get("api/v1/events/" + event + "/teams/" + id)).getObject();
+            JsonNode team = get("api/v1/events/" + event + "/teams/" + id);
+            JSONObject tm = Objects.requireNonNull(team).getObject();
             if(tm.has("errorCode") && "NO_SUCH_TEAM".equals(tm.getString("errorCode"))) {
                 ret = new Team();
                 ret.setNumber(id);
