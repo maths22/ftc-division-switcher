@@ -1,28 +1,112 @@
 package com.maths22.ftc;
 
-import com.google.common.collect.ImmutableList;
-import kong.unirest.*;
-import kong.unirest.json.JSONArray;
-import kong.unirest.json.JSONObject;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonObject;
+import com.google.gson.reflect.TypeToken;
+import com.maths22.ftc.models.*;
+import io.javalin.http.HttpStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.net.CookieHandler;
+import java.net.CookieManager;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.WebSocket;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class FtcScoringClient {
-    private final UnirestInstance unirest;
+    private static final Logger LOG = LoggerFactory.getLogger(FtcScoringClient.class);
+    private static final CookieHandler cookieHandler = new CookieManager();
+    private static final HttpClient client = HttpClient.newBuilder()
+            .cookieHandler(cookieHandler)
+            .build();
+    private static final Gson gson;
+    static {
+        GsonBuilder builder = new GsonBuilder();
+        builder.registerTypeAdapter(Alliance.class, (JsonDeserializer<Alliance>) (json, typeOfT, context) -> {
+            JsonObject object = json.getAsJsonObject();
+            boolean isQuals = object.has("team1");
+            if(isQuals) {
+                return context.deserialize(json, new TypeToken<QualsAlliance>(){}.getType());
+            } else {
+                return context.deserialize(json, new TypeToken<ElimsAlliance>(){}.getType());
+            }
+        });
+        gson = builder.create();
+    }
+
+    private final Runnable onUpdate;
+    private WebSocket socketListener;
     private boolean loggedIn;
     private String basePath;
     private String event;
     private final int divisionId;
 
-    public FtcScoringClient(int divisionId) {
+    private final Map<Integer, Team> teams = new HashMap<>();
+    private final Map<Integer, ElimsAlliance> alliances = new HashMap<>();
+    private List<Match> matches = null;
+
+    public FtcScoringClient(int divisionId, Runnable onUpdate) {
         this.divisionId = divisionId;
-        this.unirest = Unirest.spawnInstance();
         this.loggedIn = false;
+        this.onUpdate = onUpdate;
     }
 
+    public void startSocketListener() {
+        if(matches == null) {
+            throw new IllegalStateException("loadMatches must be called before startSocketListener");
+        }
+        stopSocketListener();
+        try {
+            socketListener = client.newWebSocketBuilder().buildAsync(URI.create("ws://" + basePath + "/api/v2/stream/?code=" + event), new WebSocket.Listener() {
+                private StringBuilder buffer = new StringBuilder();
+                @Override
+                public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
+                    buffer.append(data);
+                    if(last) {
+                        String message = buffer.toString();
+                        buffer = new StringBuilder();
 
-    public String getBasePath() {
-        return basePath;
+                        MatchUpdate update = gson.fromJson(message, MatchUpdate.class);
+                        System.out.println(update);
+                        try {
+                            switch (update.updateType()) {
+                                case MATCH_LOAD -> updateMatch(update.payload().shortName(), true);
+                                case MATCH_COMMIT -> updateMatch(update.payload().shortName(), false);
+                                case MATCH_START, MATCH_ABORT, MATCH_POST, SHOW_PREVIEW, SHOW_MATCH, SHOW_RANDOM -> {
+                                    // intentional noop, at least for now
+                                }
+                            }
+                        } catch (Exception ex) {
+                            LOG.error("Error processing match update", ex);
+                        }
+                    }
+                    return WebSocket.Listener.super.onText(webSocket, data, last);
+                }
+            }).get();
+        } catch (InterruptedException | ExecutionException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void stopSocketListener() {
+        if(socketListener != null) {
+            socketListener.abort();
+            socketListener = null;
+        }
     }
 
     public void setBasePath(String basePath) {
@@ -34,24 +118,49 @@ public class FtcScoringClient {
     }
 
     public void setEvent(String event) {
+        reset();
+
         this.event = event;
         loggedIn = false;
     }
 
+    private void reset() {
+        stopSocketListener();
+        teams.clear();
+        alliances.clear();
+        matches = null;
+    }
+
     public List<String> getEvents() {
-        List<String> events = new ArrayList<>();
-        get("api/v1/events").getObject().getJSONArray("eventCodes").forEach((obj) -> events.add(String.valueOf(obj)));
-        return events;
+        return gson.fromJson(get("api/v1/events/"), EventList.class).eventCodes();
     }
 
     public boolean login(String username, String password) {
-        HttpResponse<String> response = unirest.post("http://" + basePath + "/callback/")
-                .field("username", username)
-                .field("password", password == null ? "" : password)
-                .field("submit", "Login")
-                .field("client_name", "FormClient")
-                .asString();
-        if(response.getBody().contains("alert-danger")) {
+        String params = Map.of(
+                        "username", username,
+                        "password", password == null ? "" : password,
+                        "submit", "Login",
+                        "client_name", "FormClient")
+                .entrySet()
+                .stream()
+                .map(entry -> String.join("=",
+                        URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8),
+                        URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8))
+                ).collect(Collectors.joining("&"));
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://" + basePath + "/callback/"))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(params))
+                .build();
+        HttpResponse<String> response;
+        try {
+            response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (IOException | InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
+        if(response.body().contains("alert-danger")) {
             return false;
         }
 
@@ -65,30 +174,37 @@ public class FtcScoringClient {
         return true;
     }
 
-    private JsonNode get(String path) {
+    private String get(String path) {
         try {
-            HttpResponse<JsonNode> resp = unirest.get("http://" + basePath + "/" +  path)
-                    .asJson();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("http://" + basePath + "/" +  path))
+                    .header("Content-Type", "application/json")
+                    .GET()
+                    .build();
+            HttpResponse<String> resp = client.send(request, HttpResponse.BodyHandlers.ofString());
 
-            if(HttpStatus.OK == resp.getStatus()) {
-                return resp.getBody();
+            if(resp.statusCode() == HttpStatus.OK.getCode()) {
+                return resp.body();
             }
-        } catch (UnirestException e) {
+        } catch (IOException | InterruptedException e) {
             e.printStackTrace();
         }
         return null;
     }
 
-    private JsonNode post(String path, String payload) {
+    private String post(String path, String payload) {
         try {
-                HttpResponse<JsonNode> resp = unirest.post("http://" + basePath + "/" +  path)
-                    .body(payload)
-                    .asJson();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("http://" + basePath + "/" +  path))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(payload))
+                    .build();
+            HttpResponse<String> resp = client.send(request, HttpResponse.BodyHandlers.ofString());
 
-            if(HttpStatus.OK == resp.getStatus()) {
-                return resp.getBody();
+            if(resp.statusCode() == HttpStatus.OK.getCode()) {
+                return resp.body();
             }
-        } catch (UnirestException e) {
+        } catch (IOException | InterruptedException e) {
             e.printStackTrace();
         }
         return null;
@@ -133,7 +249,16 @@ public class FtcScoringClient {
         if(!loggedIn) {
             return;
         }
-        unirest.post("http://" + basePath + "/event/" + event + "/control/message/").field("msg", m).asEmpty();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://" + basePath + "/event/" + event + "/control/message/"))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString("msg=" + URLEncoder.encode(m, StandardCharsets.UTF_8)))
+                .build();
+        try {
+            client.send(request, HttpResponse.BodyHandlers.discarding());
+        } catch (IOException | InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public void showMatch(String m) {
@@ -150,123 +275,77 @@ public class FtcScoringClient {
         post("event/" + event + "/control/results/" + m + "/", "");
     }
 
-    public List<Match> getMatches() {
-        List<Match> ret = new ArrayList<>();
-        ret.addAll(getQualMatches());
-        ret.addAll(getElimMatches());
-        return ret;
+    public void loadMatches() {
+        FullEvent full = gson.fromJson(Objects.requireNonNull(get("api/v2/events/" + event + "/full/")), FullEvent.class);
+        MatchList<? extends Alliance> activeMatches = gson.fromJson(
+                Objects.requireNonNull(get("api/v1/events/" + event + "/matches/active/")),
+                new TypeToken<MatchList<? extends Alliance>>(){}.getType());
+        MatchList<ElimsAlliance> allElimsMatches = gson.fromJson(
+                Objects.requireNonNull(get("api/v2/events/" + event + "/elims/")),
+                new TypeToken<MatchList<ElimsAlliance>>(){}.getType());
+
+        full.teamList().teams().forEach(t -> teams.put(t.number(), t));
+        full.allianceList().alliances().forEach(t -> alliances.put(t.seed(), t));
+
+        matches = Stream.concat(Stream.concat(full.matchList().matches().stream(), full.elimsMatchDetailedList().matches().stream()), allElimsMatches.matches().stream().filter(m -> !m.finished()).map(m -> m.toPartialMatchDetails()))
+                .map(match -> matchFromDetails(match, activeMatches.matches().stream().anyMatch(am -> match.matchBrief().matchName().equals(am.matchName())))).toList();
+        onUpdate.run();
     }
 
-    private List<Match> getQualMatches() {
-        List<Match> ret = new ArrayList<>();
-        JSONArray matches = Objects.requireNonNull(get("api/v1/events/" + event + "/matches/")).getObject().getJSONArray("matches");
-        for(Object ob : matches) {
-            JSONObject m = (JSONObject) ob;
-            Match match = new Match();
-            int num = m.getInt("matchNumber");
-            match.setId("D" + divisionId + ": Q-" + num);
-            match.setNum(num);
-            List<Team> redAlliance = new ArrayList<>();
-            List<Team> blueAlliance = new ArrayList<>();
-            redAlliance.add(getTeam(m.getJSONObject("red").getInt("team1")));
-            redAlliance.add(getTeam(m.getJSONObject("red").getInt("team2")));
-            redAlliance.add(getTeam(m.getJSONObject("red").getInt("team3")));
-            blueAlliance.add(getTeam(m.getJSONObject("blue").getInt("team1")));
-            blueAlliance.add(getTeam(m.getJSONObject("blue").getInt("team2")));
-            blueAlliance.add(getTeam(m.getJSONObject("blue").getInt("team3")));
-            match.setRedAlliance(redAlliance);
-            match.setBlueAlliance(blueAlliance);
-            if(m.getBoolean("finished")) {
-                JSONObject details = Objects.requireNonNull(get("api/v1/events/" + event + "/matches/" + num + "/")).getObject();
-                int redScore = details.getInt("redScore");
-                int blueScore = details.getInt("blueScore");
-                char desc = 'T';
-                if (redScore > blueScore) desc = 'R';
-                if (redScore < blueScore) desc = 'B';
-                match.setScore(redScore + "-" + blueScore + " " + desc);
-             }
-            ret.add(match);
+    private Match matchFromDetails(MatchDetails<? extends Alliance> match, boolean isActive) {
+        String name = match.matchBrief().matchName();
+        int num = match.matchBrief().matchNumber();
+        List<Team> redAlliance = ((match.matchBrief().red() instanceof ElimsAlliance ea) ? alliances.get(ea.seed()) : match.matchBrief().red()).teamNumbers().stream().map(this::getTeam).toList();
+        List<Team> blueAlliance = ((match.matchBrief().blue() instanceof ElimsAlliance ea) ? alliances.get(ea.seed()) : match.matchBrief().blue()).teamNumbers().stream().map(this::getTeam).toList();
+        String score = null;
+        if(match.matchBrief().finished()) {
+            int redScore = match.redScore();
+            int blueScore = match.blueScore();
+            char desc = 'T';
+            if (redScore > blueScore) desc = 'R';
+            if (redScore < blueScore) desc = 'B';
+            score = redScore + "-" + blueScore + " " + desc;
         }
-        return ret;
+        return new Match("D" + divisionId + ": " + name, num, score, redAlliance, blueAlliance, isActive);
     }
 
-    private List<Match> getElimMatches() {
-        List<Match> ret = new ArrayList<>();
-        JsonNode elimsMatches = get("api/v2/events/" + event + "/elims/");
-        if(elimsMatches == null) {
-            return ImmutableList.of();
+    private void updateMatch(String shortName, boolean isActive) {
+        Match replacement;
+        if(shortName.startsWith("Q")) {
+            MatchDetails<QualsAlliance> details = gson.fromJson(
+                    Objects.requireNonNull(get("api/v1/events/" + event + "/matches/" + shortName.replace("Q", "") + "/")),
+                    new TypeToken<MatchDetails<QualsAlliance>>(){}.getType());
+            replacement = matchFromDetails(details, isActive);
+        } else {
+            MatchDetails<ElimsAlliance> details = gson.fromJson(
+                    Objects.requireNonNull(get("api/v2/events/" + event + "/elims/" + shortName.toLowerCase() + "/")),
+                    new TypeToken<MatchDetails<ElimsAlliance>>(){}.getType());
+            replacement = matchFromDetails(details, isActive);
         }
-        JSONArray matches = Objects.requireNonNull(elimsMatches).getObject().getJSONArray("matches");
-        JSONArray alliances = Objects.requireNonNull(get("api/v1/events/" + event + "/elim/alliances/")).getObject().getJSONArray("alliances");
-        Map<Integer, JSONObject> allianceMap = new HashMap<>();
-        alliances.forEach(ob -> {
-            JSONObject a = (JSONObject) ob;
-            int seed = a.getInt("seed");
-            allianceMap.put(seed, a);
-        });
-        for(Object ob : matches) {
-            JSONObject m = (JSONObject) ob;
-            Match match = new Match();
-            String name = m.getString("matchName");
-            match.setId("D" + divisionId + ": " + name);
-            int num = m.getInt("matchNumber");
-            match.setNum(num);
-            List<Team> redAlliance = new ArrayList<>();
-            List<Team> blueAlliance = new ArrayList<>();
-            JSONObject redAll = allianceMap.get(m.getJSONObject("red").getInt("seed"));
-            JSONObject blueAll = allianceMap.get(m.getJSONObject("blue").getInt("seed"));
-            redAlliance.add(getTeam(redAll.getInt("captain")));
-            redAlliance.add(getTeam(redAll.getInt("pick1")));
-            redAlliance.add(getTeam(redAll.getInt("pick2")));
-            if (redAll.getInt("backup") > 0) {
-                redAlliance.add(getTeam(redAll.getInt("backup")));
-            }
-            blueAlliance.add(getTeam(blueAll.getInt("captain")));
-            blueAlliance.add(getTeam(blueAll.getInt("pick1")));
-            blueAlliance.add(getTeam(blueAll.getInt("pick2")));
-            if (blueAll.getInt("backup") > 0) {
-                blueAlliance.add(getTeam(blueAll.getInt("backup")));
-            }
-            match.setRedAlliance(redAlliance);
-            match.setBlueAlliance(blueAlliance);
-            if(m.getBoolean("finished")) {
-                JSONObject details = Objects.requireNonNull(get("api/v2/events/" + event + "/elims/" + name.toLowerCase() + "/")).getObject();
-                int redScore = details.getInt("redScore");
-                int blueScore = details.getInt("blueScore");
-                char desc = 'T';
-                if (redScore > blueScore) desc = 'R';
-                if (redScore < blueScore) desc = 'B';
-                match.setScore(redScore + "-" + blueScore + " " + desc);
-            }
-            ret.add(match);
-        }
-        return ret;
+        matches = matches.stream().map(m -> m.id().equals(replacement.id()) ? replacement : m).toList();
+        onUpdate.run();
     }
 
-    private Map<Integer, Team> teams = new HashMap<>();
+    private Alliance getAlliance(int seed) {
+        // todo auto reload alliance
+        return null;
+    }
 
     private Team getTeam(int id) {
         if(id == -1) return null;
         Team ret = teams.get(id);
         if(ret == null) {
-            JsonNode team = get("api/v1/events/" + event + "/teams/" + id);
-            JSONObject tm = Objects.requireNonNull(team).getObject();
-            if(tm.has("errorCode") && "NO_SUCH_TEAM".equals(tm.getString("errorCode"))) {
-                ret = new Team();
-                ret.setNumber(id);
-            } else if(tm.isNull("errorCode")) {
-                ret = new Team();
-                ret.setNumber(id);
-                ret.setName(tm.getString("name"));
-                ret.setOrganization(tm.getString("school"));
-                ret.setCity(tm.getString("city"));
-                ret.setState(tm.getString("state"));
-                ret.setCountry(tm.getString("country"));
-                ret.setRookie(tm.getInt("rookie"));
-            }
-
+            String rawTeam = get("api/v1/events/" + event + "/teams/" + id + "/");
+            ret = gson.fromJson(Objects.requireNonNull(rawTeam), Team.class);
             teams.put(id, ret);
         }
         return ret;
+    }
+
+    public List<Match> matches() {
+        if(matches == null) {
+            return List.of();
+        }
+        return matches;
     }
 }

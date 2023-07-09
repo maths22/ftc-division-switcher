@@ -1,13 +1,12 @@
 package com.maths22.ftc;
 
+import com.google.gson.Gson;
 import io.javalin.Javalin;
 import io.javalin.http.HttpStatus;
 import io.javalin.http.staticfiles.Location;
 import net.ser1.stomp.Client;
 import net.ser1.stomp.Listener;
 import org.eclipse.jetty.websocket.api.Session;
-import org.json.JSONArray;
-import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,21 +18,16 @@ import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
-import java.util.*;
 import java.util.List;
 import java.util.Timer;
+import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 public class DivisionSwitcher {
     private static final Logger LOG = LoggerFactory.getLogger(DivisionSwitcher.class);
+    private static final Gson gson = new Gson();
     private final Set<Session> wsClients = new HashSet<>();
-    private ScheduledFuture<?> d0Loop = null;
-    private ScheduledFuture<?> d1Loop = null;
-    private ScheduledFuture<?> d2Loop = null;
     private String data;
     private JButton connectButton;
     private JTextField textField1;
@@ -60,12 +54,9 @@ public class DivisionSwitcher {
     private JComboBox<String> d2Event;
     private JCheckBox enabledCheckBox;
     private Client switcherClient;
-    private FtcScoringClient d0Client = new FtcScoringClient(0);
-    private FtcScoringClient d1Client = new FtcScoringClient(1);
-    private FtcScoringClient d2Client = new FtcScoringClient(2);
-    private List<JSONObject> d0Matches = new ArrayList<>();
-    private List<JSONObject> d1Matches = new ArrayList<>();
-    private List<JSONObject> d2Matches = new ArrayList<>();
+    private FtcScoringClient d0Client = new FtcScoringClient(0, this::sendMatches);
+    private FtcScoringClient d1Client = new FtcScoringClient(1, this::sendMatches);
+    private FtcScoringClient d2Client = new FtcScoringClient(2, this::sendMatches);
     private String spreadsheetId;
     private ScheduledExecutorService executor = Executors.newScheduledThreadPool(3);
 
@@ -127,9 +118,6 @@ public class DivisionSwitcher {
             }
         });
        d0ConnectButton.addActionListener((ActionEvent e) -> {
-            if (d0Loop != null) {
-                d0Loop.cancel(true);
-            }
             try {
                 d0Client.setEvent((String) d1Event.getSelectedItem());
                 if(d0Client.getEvent() == null) return;
@@ -137,14 +125,8 @@ public class DivisionSwitcher {
 //                    sendTime("1", s);
 //                });
 
-                d0Loop = executor.scheduleAtFixedRate(() -> {
-                    try {
-                        d0Matches = d0Client.getMatches().stream().map(Match::toJson).collect(Collectors.toList());
-                        sendMatches();
-                    } catch (Exception ex) {
-                        ex.printStackTrace();
-                    }
-                }, 0, 5, TimeUnit.SECONDS);
+                d0Client.loadMatches();
+                d0Client.startSocketListener();
 
                 ScoringLogin dialog = new ScoringLogin(d0Client);
                 dialog.pack();
@@ -154,9 +136,6 @@ public class DivisionSwitcher {
             }
         });
         d1ConnectButton.addActionListener((ActionEvent e) -> {
-            if (d1Loop != null) {
-                d1Loop.cancel(true);
-            }
             try {
                 d1Client.setEvent((String) d1Event.getSelectedItem());
                 if(d1Client.getEvent() == null) return;
@@ -164,14 +143,8 @@ public class DivisionSwitcher {
 //                    sendTime("1", s);
 //                });
 
-                d1Loop = executor.scheduleAtFixedRate(() -> {
-                    try {
-                        d1Matches = d1Client.getMatches().stream().map(Match::toJson).collect(Collectors.toList());
-                        sendMatches();
-                    } catch (Exception ex) {
-                        ex.printStackTrace();
-                    }
-                }, 0, 5, TimeUnit.SECONDS);
+                d1Client.loadMatches();
+                d1Client.startSocketListener();
 
                 ScoringLogin dialog = new ScoringLogin(d1Client);
                 dialog.pack();
@@ -181,9 +154,6 @@ public class DivisionSwitcher {
             }
         });
         d2ConnectButton.addActionListener((ActionEvent e) -> {
-            if (d2Loop != null) {
-                d2Loop.cancel(true);
-            }
             try {
                 d2Client.setEvent((String) d1Event.getSelectedItem());
                 if(d2Client.getEvent() == null) return;
@@ -191,14 +161,8 @@ public class DivisionSwitcher {
 //                    sendTime("1", s);
 //                });
 
-                d2Loop = executor.scheduleAtFixedRate(() -> {
-                    try {
-                        d2Matches = d2Client.getMatches().stream().map(Match::toJson).collect(Collectors.toList());
-                        sendMatches();
-                    } catch (Exception ex) {
-                        ex.printStackTrace();
-                    }
-                }, 0, 5, TimeUnit.SECONDS);
+                d2Client.loadMatches();
+                d2Client.startSocketListener();
 
                 ScoringLogin dialog = new ScoringLogin(d2Client);
                 dialog.pack();
@@ -259,12 +223,8 @@ public class DivisionSwitcher {
                     ctx.result("Updated");
                 })
                 .ws("/matchstream", (cfg) -> {
-                    cfg.onConnect((ctx) -> {
-                        wsClients.add(ctx.session);
-                    });
-                    cfg.onClose((ctx) -> {
-                        wsClients.remove(ctx.session);
-                    });
+                    cfg.onConnect((ctx) -> wsClients.add(ctx.session));
+                    cfg.onClose((ctx) -> wsClients.remove(ctx.session));
                 })
                 .start(8888);
         Timer timer = new Timer();
@@ -286,32 +246,26 @@ public class DivisionSwitcher {
             ipTextArea.setBackground(null);
             ipTextArea.setBorder(null);
             ipTextArea.setEditable(true);
-            if (ifs == null) {
-                ipTextArea.setText(ipTextArea.getText() + "No Network Interfaces present\r\n");
+            while (ifs.hasMoreElements()) {
+                NetworkInterface ni = ifs.nextElement();
+                Enumeration<InetAddress> addrs = ni.getInetAddresses();
 
-                ipTextArea.setText(ipTextArea.getText() + "http://127.0.0.1:8080\r\n");
-            } else {
-                while(ifs.hasMoreElements()) {
-                    NetworkInterface ni = ifs.nextElement();
-                    Enumeration addrs = ni.getInetAddresses();
-
-                    while(addrs.hasMoreElements()) {
-                        InetAddress ia = (InetAddress)addrs.nextElement();
-                        if (ia.getClass() == Inet4Address.class && !ia.isLoopbackAddress()) {
-                            String addrStr = ia.getCanonicalHostName();
-                            String ipStr = ia.getHostAddress();
-                            if (addrStr.equals(ipStr)) {
-                                addrStr = null;
-                            }
-
-                            if (addrStr != null) {
-                                ipTextArea.setText(ipTextArea.getText() +
-                                        "http://" + addrStr + ":8888\r\n");
-                            }
-
-                            ipTextArea.setText(ipTextArea.getText() +
-                                    "http://" + ipStr + ":8888\r\n");
+                while (addrs.hasMoreElements()) {
+                    InetAddress ia = addrs.nextElement();
+                    if (ia.getClass() == Inet4Address.class && !ia.isLoopbackAddress()) {
+                        String addrStr = ia.getCanonicalHostName();
+                        String ipStr = ia.getHostAddress();
+                        if (addrStr.equals(ipStr)) {
+                            addrStr = null;
                         }
+
+                        if (addrStr != null) {
+                            ipTextArea.setText(ipTextArea.getText() +
+                                    "http://" + addrStr + ":8888\r\n");
+                        }
+
+                        ipTextArea.setText(ipTextArea.getText() +
+                                "http://" + ipStr + ":8888\r\n");
                     }
                 }
             }
@@ -320,18 +274,9 @@ public class DivisionSwitcher {
             var5.printStackTrace();
         }
         resetButton.addActionListener(e -> {
-            if (d0Loop != null) {
-                d0Loop.cancel(true);
-            }
-            if (d1Loop != null) {
-                d1Loop.cancel(true);
-            }
-            if (d2Loop != null) {
-                d2Loop.cancel(true);
-            }
-            d0Matches = new ArrayList<>();
-            d1Matches = new ArrayList<>();
-            d2Matches = new ArrayList<>();
+            d0Client.stopSocketListener();
+            d1Client.stopSocketListener();
+            d2Client.stopSocketListener();
             d0Address.setText("");
             d1Address.setText("");
             d2Address.setText("");
@@ -374,19 +319,14 @@ public class DivisionSwitcher {
     private void sendTime(String div, String msg) {
         String[] parts = msg.split(" ");
 
-
-        JSONObject data = new JSONObject();
-        data.put("div", div);
-        data.put("phase", toTitleCase(parts[2].replace('_', ' ')));
-        data.put("min", Integer.parseInt(parts[3]) / 60);
-        data.put("sec", Integer.parseInt(parts[3]) % 60);
-
-        JSONObject send = new JSONObject();
-        send.put("type", "time");
-        send.put("data", data);
         for(Session socket : wsClients) {
             try {
-                socket.getRemote().sendString(send.toString());
+                socket.getRemote().sendString(gson.toJson(Map.of("type", "time", "data", Map.of(
+                        "div", div,
+                        "phase", toTitleCase(parts[2].replace('_', ' ')),
+                        "min", Integer.parseInt(parts[3]) / 60,
+                        "sec", Integer.parseInt(parts[3]) % 60
+                ))));
             } catch (IOException e) {
                 LOG.warn("Failed to send time", e);
             }
@@ -405,12 +345,10 @@ public class DivisionSwitcher {
 
     private void sendState() {
         if(data == null) return;
-        JSONObject send = new JSONObject();
-        send.put("data", data);
-        send.put("type", "state");
+
         for(Session socket : wsClients) {
             try {
-                socket.getRemote().sendString(send.toString());
+                socket.getRemote().sendString(gson.toJson(Map.of("type", "state", "data", data)));
             } catch (IOException e) {
                 LOG.warn("Failed to send state", e);
             }
@@ -418,12 +356,9 @@ public class DivisionSwitcher {
     }
 
     private void sendSingleStep() {
-        JSONObject send = new JSONObject();
-        send.put("data", enabledCheckBox.isSelected() ? 0 : 1);
-        send.put("type", "singleStep");
         for(Session socket : wsClients) {
             try {
-                socket.getRemote().sendString(send.toString());
+                socket.getRemote().sendString(gson.toJson(Map.of("type", "singleStep", "data", enabledCheckBox.isSelected() ? 0 : 1)));
             } catch (IOException e) {
                 LOG.warn("Failed to send step", e);
             }
@@ -433,15 +368,9 @@ public class DivisionSwitcher {
     private void sendAuxInfo() {
         if(spreadsheetId == null || spreadsheetId.isEmpty()) return;
         try {
-            JSONObject send = new JSONObject();
             SheetRetriever.Result res = retriever.getTeamInfo(spreadsheetId);
-            JSONObject data = new JSONObject();
-            data.put("titles", res.getTitles());
-            data.put("entries", res.getEntries());
-            send.put("data", data);
-            send.put("type", "auxInfo");
             for(Session socket : wsClients) {
-                socket.getRemote().sendString(send.toString());
+                socket.getRemote().sendString(gson.toJson(Map.of("type", "auxInfo", "data", Map.of("titles", res.titles(), "entries", res.entries()))));
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -449,40 +378,34 @@ public class DivisionSwitcher {
     }
 
     private void sendMatches() {
-        List<JSONObject> matches = new ArrayList<>();
-        Iterator<JSONObject> itA;
-        Iterator<JSONObject> itB;
+        List<Match> matches = new ArrayList<>();
+        Iterator<Match> itA;
+        Iterator<Match> itB;
 
-        itA = d1Matches.stream().filter((m) -> m.getString("id").contains(" P-")).iterator();
-        itB = d2Matches.stream().filter((m) -> m.getString("id").contains(" P-")).iterator();
-
-        interleaveMatches(matches, itA, itB);
-
-        itA = d1Matches.stream().filter((m) -> m.getString("id").contains(" Q-")).iterator();
-        itB = d2Matches.stream().filter((m) -> m.getString("id").contains(" Q-")).iterator();
+        itA = d1Client.matches().stream().filter((m) -> m.id().contains(" P")).iterator();
+        itB = d2Client.matches().stream().filter((m) -> m.id().contains(" P")).iterator();
 
         interleaveMatches(matches, itA, itB);
 
-        itA = d1Matches.stream().filter((m) -> m.getString("id").contains(" R")).iterator();
-        itB = d2Matches.stream().filter((m) -> m.getString("id").contains(" R")).iterator();
+        itA = d1Client.matches().stream().filter((m) -> m.id().contains(" Q")).iterator();
+        itB = d2Client.matches().stream().filter((m) -> m.id().contains(" Q")).iterator();
 
         interleaveMatches(matches, itA, itB);
 
-        itA = d1Matches.stream().filter((m) -> m.getString("id").contains(" F-")).iterator();
-        itB = d2Matches.stream().filter((m) -> m.getString("id").contains(" F-")).iterator();
+        itA = d1Client.matches().stream().filter((m) -> m.id().contains(" R")).iterator();
+        itB = d2Client.matches().stream().filter((m) -> m.id().contains(" R")).iterator();
 
         interleaveMatches(matches, itA, itB);
-        matches.addAll(d0Matches);
 
-        JSONArray array = new JSONArray();
-        matches.forEach(array::put);
-        JSONObject send = new JSONObject();
-        send.put("data", array);
-        send.put("type", "matchData");
+        itA = d1Client.matches().stream().filter((m) -> m.id().contains(" F")).iterator();
+        itB = d2Client.matches().stream().filter((m) -> m.id().contains(" F")).iterator();
+
+        interleaveMatches(matches, itA, itB);
+        matches.addAll(d0Client.matches());
 
         for(Session socket : wsClients) {
             try {
-                socket.getRemote().sendString(send.toString());
+                socket.getRemote().sendString(gson.toJson(Map.of("type", "matchData", "data", matches)));
             } catch (IOException e) {
                 LOG.warn("Failed to send matches", e);
             }
@@ -490,7 +413,7 @@ public class DivisionSwitcher {
         sendState();
     }
 
-    private void interleaveMatches(List<JSONObject> matches, Iterator<JSONObject> itA, Iterator<JSONObject> itB) {
+    private void interleaveMatches(List<Match> matches, Iterator<Match> itA, Iterator<Match> itB) {
         while (itA.hasNext() || itB.hasNext()) {
             if (itA.hasNext()) matches.add(itA.next());
             if (itB.hasNext()) matches.add(itB.next());
@@ -532,16 +455,10 @@ public class DivisionSwitcher {
     }
 
     private void sendShowMessage(String s) {
-        switch(s) {
-            case "1":
-                division1RadioButton.setSelected(true);
-                break;
-            case "2":
-                division2RadioButton.setSelected(true);
-                break;
-            case "r":
-                rankingsRadioButton.setSelected(true);
-                break;
+        switch (s) {
+            case "1" -> division1RadioButton.setSelected(true);
+            case "2" -> division2RadioButton.setSelected(true);
+            case "r" -> rankingsRadioButton.setSelected(true);
         }
         if(s.equals("r")) s = "rank";
 

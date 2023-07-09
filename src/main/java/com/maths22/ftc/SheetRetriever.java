@@ -13,8 +13,6 @@ import com.google.api.client.util.store.FileDataStoreFactory;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.ValueRange;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -131,21 +129,6 @@ public class SheetRetriever {
                 .collect(Collectors.toMap(_i -> keyIter.next(), _i -> valIter.next()));
     }
 
-    public class Result {
-        private final List<Object> titles;
-        private final Map<Object, Map<Object, Object>> entries;
-
-        public Result(List<Object> titles, Map<Object, Map<Object, Object>> entries) {
-            this.titles = titles;
-            this.entries = entries;
-        }
-
-        public List<Object> getTitles() {
-            return titles;
-        }
-
-        public Map<Object, Map<Object, Object>> getEntries() {
-            return entries;
-        }
+    public record Result(List<Object> titles, Map<Object, Map<Object, Object>> entries) {
     }
 }

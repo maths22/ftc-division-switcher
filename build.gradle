@@ -37,9 +37,7 @@ configurations {
 dependencies {
     implementation group: "io.javalin", name: "javalin", version: "5.6.1"
 
-    implementation 'com.konghq:unirest-java:3.13.6'
-    implementation 'org.json:json:20171018'
-    implementation 'com.google.code.gson:gson:2.8.2'
+    implementation group: 'com.google.code.gson', name: 'gson', version: '2.10.1'
     implementation 'com.google.api-client:google-api-client:1.23.0'
     implementation 'com.google.oauth-client:google-oauth-client-jetty:1.23.0'
     implementation 'com.google.apis:google-api-services-sheets:v4-rev500-1.23.0'

@@ -17,142 +17,22 @@
     </style>
 </head>
 <body class="container">
-<h1>FTC Display Switcher</h1>
-
-<div>
-
-    <!-- Nav tabs -->
-    <ul class="nav nav-pills" role="tablist">
-        <li role="presentation" class="active"><a href="#match-play" aria-controls="home" role="tab" data-toggle="pill">Match Play</a></li>
-        <li role="presentation"><a href="#display" aria-controls="profile" role="tab" data-toggle="pill">Display</a></li>
-    </ul>
-
-    <!-- Tab panes -->
-    <div class="tab-content">
-        <div role="tabpanel" class="tab-pane active form" id="match-play">
-            <div class="container-fluid">
-
-                <h3>Automatic Control</h3>
-                <div class="row auto-btns button-column">
-                    <div class="col-sm-4">
-                        <button type="button" class="btn btn-default btn-block" onclick="clickMatchPlayPrev()" id="prevButton">
-                            Previous
-                            <br/>
-                            <span id="prevDescr"></span>
-                            <br/>
-                            <span id="scorePrev"></span>
-                        </button>
-                    </div>
-                    <div class="col-sm-4">
-                        <button type="button" class="btn btn-default btn-block" onclick="clickMatchPlayCur()" id="curButton">
-                            Current
-                            <br/>
-                            <span id="curDescr"></span>
-                            <br/>
-                            <span id="scoreCur"></span>
-                        </button>
-                    </div>
-                    <div class="col-sm-4">
-                        <button type="button" class="btn btn-primary btn-block" onclick="clickMatchPlayNext()" id="nextButton">
-                            Next
-                            <br/>
-                            <span id="nextDescr"></span>
-                            <br/>
-                            <span id="scoreAuto"></span>
-                        </button>
-                    </div>
-                </div>
-
-                <h4 id="current-display"></h4>
-                <h4 id="current-score"></h4>
-                <h4 id="timer"></h4>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Position</th>
-                            <th>Number</th>
-                            <th>Name</th>
-                            <th>Organization</th>
-                            <th>City</th>
-                            <th>State</th>
-                            <th>Country</th>
-                        </tr>
-                    </thead>
-                    <tbody id="team-list">
-
-                    </tbody>
-                </table>
-                <table class="table">
-                    <thead>
-                    <tr id="aux-row">
-
-                    </tr>
-                    </thead>
-                    <tbody id="team-aux-list">
-
-                    </tbody>
-                </table>
-
-                <h3>Manual Control</h3>
-                <div class="button-column">
-                    <div class="form-group">
-                        <label for="match-select" >Match</label>
-                        <select class="form-control" id="match-select">
-                        </select>
-                    </div>
-                    <button type="button" class="btn btn-default" onclick="clickMatchPlayPrematch()">Pre-Match Information</button><br/>
-                    <!--<button type="button" class="btn btn-default" onclick="clickMatchPlayTimer()">Match Timer</button><br/>-->
-                    <button type="button" class="btn btn-default" onclick="clickMatchPlayResults()">Results</button><br/>
-
-                </div>
-            </div>
-        </div>
-        <div role="tabpanel" class="tab-pane form" id="display">
-            <div class="container-fluid row">
-                <div class="col-sm-6">
-                    <h3>Rankings</h3>
-                    <button type="button" class="btn btn-default" onclick="sendCommand(['rankings', 'D1'])">D1</button>
-                    <button type="button" class="btn btn-default" onclick="sendCommand(['rankings', 'D2'])">D2</button><br/>
-                    <!--<button type="button" class="btn btn-default" onclick="sendCommand(['rankings', 'Dr'])">All</button><br/>-->
-                    <h3>Alliance Selection</h3>
-                    <button type="button" class="btn btn-default" onclick="sendCommand(['alliance', 'D1'])">D1</button>
-                    <button type="button" class="btn btn-default" onclick="sendCommand(['alliance', 'D2'])">D2</button><br/>
-                    <h3>Elimination Ladder</h3>
-                    <button type="button" class="btn btn-default" onclick="sendCommand(['elimination', 'D1'])">D1</button>
-                    <button type="button" class="btn btn-default" onclick="sendCommand(['elimination', 'D2'])">D2</button><br/>
-                    <h3>Online Results</h3>
-                    <button type="button" class="btn btn-default" onclick="sendCommand(['online', 'D1'])">D1</button>
-                    <button type="button" class="btn btn-default" onclick="sendCommand(['online', 'D2'])">D2</button><br/>
-                </div>
-                <div class="col-sm-6">
-<!--                    case "online":-->
-                    <h3>Sponsor Listing</h3>
-                    <button type="button" class="btn btn-default" onclick="sendCommand(['sponsor', 'D1'])">Show</button><br/>
-                    <h3>Blank</h3>
-                    <button type="button" class="btn btn-default" onclick="sendCommand(['blank', 'D1'])">Show</button><br/>
-                    <h3>Video only</h3>
-                    <button type="button" class="btn btn-default" onclick="sendCommand(['video', 'D1'])">Show</button><br/>
-                    <h3>Wi-Fi reminder</h3>
-                    <button type="button" class="btn btn-default" onclick="sendCommand(['wifi', 'D1'])">Show</button><br/>
-                    <h3>Audience Key</h3>
-                    <button type="button" class="btn btn-default" onclick="sendCommand(['key', 'D1'])">Show</button><br/>
-                    <h3>Announcement</h3>
-                    <textarea id="announcementText"></textarea>
-                    <button type="button" class="btn btn-default" onclick="sendCommand(['announcement', 'D1', document.getElementById('announcementText').value])">Show</button><br/>
-                </div>
-            </div>
-        </div>
-    </div>
-
-</div>
-
-
-
-<script src="jquery.min.js"></script>
-<script src="bootstrap.min.js"></script>
 
 <script src="pws.js"></script>
 
-<script src="displaycontroller.js"></script>
+<script type="importmap">
+  {
+    "imports": {
+      "htm": "./htm.module.js",
+      "preact": "./preact.module.js",
+      "preact/hooks": "./preact/hooks.module.js",
+      "@popperjs/core": "./popperjs/popper.js"
+    }
+  }
+</script>
+
+<script type="module" src="bootstrap.esm.min.js"></script>
+<script type="module" src="displayController.js"></script>
+
 </body>
 </html>
