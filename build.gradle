@@ -1,7 +1,11 @@
 plugins {
     id 'application'
     id 'maven-publish'
+    id "com.github.node-gradle.node" version "5.0.0"
+    id 'cz.habarta.typescript-generator' version '3.2.1263'
 }
+
+import java.nio.file.Files
 
 repositories {
     mavenLocal()
@@ -24,6 +28,10 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(17)
     }
+}
+
+node {
+    download = true
 }
 
 application {
@@ -50,6 +58,32 @@ dependencies {
     implementation files('lib/gozirra-0.4.1.jar')
 }
 
+tasks {
+    generateTypeScript {
+        jsonLibrary = 'gson'
+        classesWithAnnotations = [
+                'com.maths22.ftc.TypeScriptExport'
+        ]
+        outputKind = "module"
+        outputFileType = "implementationFile"
+        outputFile = project.file("src/main/javascript/javaTypes.ts")
+    }
+}
+
+task buildJsTask(type: NpmTask) {
+    doFirst {
+        Files.createDirectories(project.file("build/resources/main/serve").toPath())
+    }
+
+    args = ['run', 'build']
+
+    dependsOn(tasks.generateTypeScript)
+    dependsOn(tasks.npmInstall)
+
+    processResources.dependsOn "buildJsTask"
+
+    workingDir = project.file("src/main/javascript")
+}
 
 compileJava {
     inputs.files(fileTree('src/main/java').matching {

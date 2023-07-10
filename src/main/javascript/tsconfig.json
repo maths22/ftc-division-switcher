@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports" : true,
+    "target": "ESNext",
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "moduleResolution": "Node",
+    "skipLibCheck": true,
+    "baseUrl": "./",
+    "resolveJsonModule": true,
+    "strict": true,
+
+  }
+}

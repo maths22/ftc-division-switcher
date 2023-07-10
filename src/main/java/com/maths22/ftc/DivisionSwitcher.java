@@ -178,11 +178,6 @@ public class DivisionSwitcher {
                         sfc.location = Location.CLASSPATH;
                     });
                 })
-                .get("/load", ctx -> {
-                    new Thread(this::sendAuxInfo).start();
-                    new Thread(this::sendMatches).start();
-                    new Thread(this::sendSingleStep).start();
-                })
                 .get("/api", ctx -> {
                     if(ctx.queryParam("division") == null) {
                         ctx.status(HttpStatus.BAD_REQUEST);
@@ -223,7 +218,19 @@ public class DivisionSwitcher {
                     ctx.result("Updated");
                 })
                 .ws("/matchstream", (cfg) -> {
-                    cfg.onConnect((ctx) -> wsClients.add(ctx.session));
+                    cfg.onConnect((ctx) -> {
+                        wsClients.add(ctx.session);
+
+                        SheetRetriever.Result auxData = auxData();
+                        if(auxData != null) {
+                            ctx.session.getRemote().sendString(gson.toJson(new Message.AuxInfo(auxData)));
+                        }
+                        ctx.session.getRemote().sendString(gson.toJson(new Message.MatchData(mergedMatches())));
+                        if(data != null) {
+                            ctx.session.getRemote().sendString(gson.toJson(new Message.State(data)));
+                        }
+                        ctx.session.getRemote().sendString(gson.toJson(new Message.SingleStep(enabledCheckBox.isSelected())));
+                    });
                     cfg.onClose((ctx) -> wsClients.remove(ctx.session));
                 })
                 .start(8888);
@@ -348,7 +355,7 @@ public class DivisionSwitcher {
 
         for(Session socket : wsClients) {
             try {
-                socket.getRemote().sendString(gson.toJson(Map.of("type", "state", "data", data)));
+                socket.getRemote().sendString(gson.toJson(new Message.State(data)));
             } catch (IOException e) {
                 LOG.warn("Failed to send state", e);
             }
@@ -358,7 +365,7 @@ public class DivisionSwitcher {
     private void sendSingleStep() {
         for(Session socket : wsClients) {
             try {
-                socket.getRemote().sendString(gson.toJson(Map.of("type", "singleStep", "data", enabledCheckBox.isSelected() ? 0 : 1)));
+                socket.getRemote().sendString(gson.toJson(new Message.SingleStep(enabledCheckBox.isSelected())));
             } catch (IOException e) {
                 LOG.warn("Failed to send step", e);
             }
@@ -366,18 +373,39 @@ public class DivisionSwitcher {
     }
 
     private void sendAuxInfo() {
-        if(spreadsheetId == null || spreadsheetId.isEmpty()) return;
+        SheetRetriever.Result data = auxData();
+        if(data == null) return;
         try {
-            SheetRetriever.Result res = retriever.getTeamInfo(spreadsheetId);
             for(Session socket : wsClients) {
-                socket.getRemote().sendString(gson.toJson(Map.of("type", "auxInfo", "data", Map.of("titles", res.titles(), "entries", res.entries()))));
+                socket.getRemote().sendString(gson.toJson(new Message.AuxInfo(data)));
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
+    private SheetRetriever.Result auxData() {
+        if(spreadsheetId == null || spreadsheetId.isEmpty()) return null;
+        try {
+            return retriever.getTeamInfo(spreadsheetId);
+        } catch (IOException e) {
+            LOG.error("Failed retrieving aux data", e);
+        }
+        return null;
+    }
+
     private void sendMatches() {
+        List<Match> data = mergedMatches();
+        for(Session socket : wsClients) {
+            try {
+                socket.getRemote().sendString(gson.toJson(new Message.MatchData(data)));
+            } catch (IOException e) {
+                LOG.warn("Failed to send matches", e);
+            }
+        }
+    }
+
+    private List<Match> mergedMatches() {
         List<Match> matches = new ArrayList<>();
         Iterator<Match> itA;
         Iterator<Match> itB;
@@ -403,14 +431,7 @@ public class DivisionSwitcher {
         interleaveMatches(matches, itA, itB);
         matches.addAll(d0Client.matches());
 
-        for(Session socket : wsClients) {
-            try {
-                socket.getRemote().sendString(gson.toJson(Map.of("type", "matchData", "data", matches)));
-            } catch (IOException e) {
-                LOG.warn("Failed to send matches", e);
-            }
-        }
-        sendState();
+        return matches;
     }
 
     private void interleaveMatches(List<Match> matches, Iterator<Match> itA, Iterator<Match> itB) {

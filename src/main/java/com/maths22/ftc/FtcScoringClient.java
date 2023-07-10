@@ -280,8 +280,9 @@ public class FtcScoringClient {
         MatchList<? extends Alliance> activeMatches = gson.fromJson(
                 Objects.requireNonNull(get("api/v1/events/" + event + "/matches/active/")),
                 new TypeToken<MatchList<? extends Alliance>>(){}.getType());
-        MatchList<ElimsAlliance> allElimsMatches = gson.fromJson(
-                Objects.requireNonNull(get("api/v2/events/" + event + "/elims/")),
+        String rawElimsMatches = get("api/v2/events/" + event + "/elims/");
+        MatchList<ElimsAlliance> allElimsMatches = rawElimsMatches == null ? new MatchList<>(List.of()) : gson.fromJson(
+                Objects.requireNonNull(rawElimsMatches),
                 new TypeToken<MatchList<ElimsAlliance>>(){}.getType());
 
         full.teamList().teams().forEach(t -> teams.put(t.number(), t));
