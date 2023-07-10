@@ -28,6 +28,7 @@ public class DivisionSwitcher {
     private static final Logger LOG = LoggerFactory.getLogger(DivisionSwitcher.class);
     private static final Gson gson = new Gson();
     private final Set<Session> wsClients = new HashSet<>();
+    private final SheetRetriever retriever;
     private String data;
     private JButton connectButton;
     private JTextField textField1;
@@ -59,8 +60,6 @@ public class DivisionSwitcher {
     private FtcScoringClient d2Client = new FtcScoringClient(2, this::sendMatches);
     private String spreadsheetId;
     private ScheduledExecutorService executor = Executors.newScheduledThreadPool(3);
-
-    private final SheetRetriever retriever = new SheetRetriever();
 
     public static void main(String[] args) {
         JFrame frame = new JFrame("DivisionSwitcher");
@@ -297,6 +296,8 @@ public class DivisionSwitcher {
             new Thread(DivisionSwitcher.this::sendAuxInfo).start();
         });
         enabledCheckBox.addActionListener(e -> new Thread(DivisionSwitcher.this::sendSingleStep).start());
+
+        retriever = new SheetRetriever(new JavalinVerificationCodeReciever(app));
     }
 
     private Listener heartbeatListener(Client client, JLabel status) {
