@@ -1,0 +1,19 @@
+.team-table table {
+    table-layout: fixed;
+}
+
+.team-table td {
+    vertical-align: top;
+}
+
+.team-table tr {
+    border-bottom: 2px solid white;
+}
+
+.team-table .red td {
+    background-color: #F7B3B4;
+}
+
+.team-table .blue td {
+    background-color: #98B4F4;
+}

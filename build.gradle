@@ -64,6 +64,7 @@ tasks {
         classesWithAnnotations = [
                 'com.maths22.ftc.TypeScriptExport'
         ]
+        mapEnum = 'asEnum'
         outputKind = "module"
         outputFileType = "implementationFile"
         outputFile = project.file("src/main/javascript/javaTypes.ts")

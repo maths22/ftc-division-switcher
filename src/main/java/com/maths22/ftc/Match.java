@@ -4,8 +4,8 @@ import com.maths22.ftc.models.Team;
 
 import java.util.List;
 
-public record Match (String id, int num, String score, List<Team> redAlliance, List<Team> blueAlliance, boolean isActive) {
-    public Match(String id, int num, String score, List<Team> redAlliance, List<Team> blueAlliance) {
+public record Match (MatchId id, int num, String score, List<Team> redAlliance, List<Team> blueAlliance, boolean isActive) {
+    public Match(MatchId id, int num, String score, List<Team> redAlliance, List<Team> blueAlliance) {
         this(id, num, score, redAlliance, blueAlliance, false);
     }
 

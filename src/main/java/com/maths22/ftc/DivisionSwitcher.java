@@ -184,9 +184,9 @@ public class DivisionSwitcher {
                     }
                     String target = ctx.queryParam("division");
                     String display = ctx.queryParam("display");
-                    String match = "";
-                    if(ctx.queryParamMap().containsKey("match")) {
-                        match = ctx.queryParam("match");
+                    String match = ctx.queryParam("match");
+                    if(match == null) {
+                        match = "";
                     }
                     if(target == null) {
                         ctx.status(HttpStatus.BAD_REQUEST);
@@ -210,8 +210,10 @@ public class DivisionSwitcher {
                         return;
                     }
 
-                    data = ctx.queryParam("data");
-                    sendState();
+                    if(!match.equals("")) {
+                        data = ctx.queryParam("data");
+                        sendState();
+                    }
 
                     ctx.contentType("text/plain");
                     ctx.result("Updated");
@@ -228,7 +230,7 @@ public class DivisionSwitcher {
                         if(data != null) {
                             ctx.session.getRemote().sendString(gson.toJson(new Message.State(data)));
                         }
-                        ctx.session.getRemote().sendString(gson.toJson(new Message.SingleStep(enabledCheckBox.isSelected())));
+                        ctx.session.getRemote().sendString(gson.toJson(new Message.SingleStep(!enabledCheckBox.isSelected())));
                     });
                     cfg.onClose((ctx) -> wsClients.remove(ctx.session));
                 })
@@ -366,7 +368,7 @@ public class DivisionSwitcher {
     private void sendSingleStep() {
         for(Session socket : wsClients) {
             try {
-                socket.getRemote().sendString(gson.toJson(new Message.SingleStep(enabledCheckBox.isSelected())));
+                socket.getRemote().sendString(gson.toJson(new Message.SingleStep(!enabledCheckBox.isSelected())));
             } catch (IOException e) {
                 LOG.warn("Failed to send step", e);
             }
@@ -411,23 +413,23 @@ public class DivisionSwitcher {
         Iterator<Match> itA;
         Iterator<Match> itB;
 
-        itA = d1Client.matches().stream().filter((m) -> m.id().contains(" P")).iterator();
-        itB = d2Client.matches().stream().filter((m) -> m.id().contains(" P")).iterator();
+        itA = d1Client.matches().stream().filter((m) -> m.id().matchType() == MatchType.PRACTICE).iterator();
+        itB = d2Client.matches().stream().filter((m) -> m.id().matchType() == MatchType.PRACTICE).iterator();
 
         interleaveMatches(matches, itA, itB);
 
-        itA = d1Client.matches().stream().filter((m) -> m.id().contains(" Q")).iterator();
-        itB = d2Client.matches().stream().filter((m) -> m.id().contains(" Q")).iterator();
+        itA = d1Client.matches().stream().filter((m) -> m.id().matchType() == MatchType.QUALS).iterator();
+        itB = d2Client.matches().stream().filter((m) -> m.id().matchType() == MatchType.QUALS).iterator();
 
         interleaveMatches(matches, itA, itB);
 
-        itA = d1Client.matches().stream().filter((m) -> m.id().contains(" R")).iterator();
-        itB = d2Client.matches().stream().filter((m) -> m.id().contains(" R")).iterator();
+        itA = d1Client.matches().stream().filter((m) -> m.id().matchType().isSemiFinal()).iterator();
+        itB = d2Client.matches().stream().filter((m) -> m.id().matchType().isSemiFinal()).iterator();
 
         interleaveMatches(matches, itA, itB);
 
-        itA = d1Client.matches().stream().filter((m) -> m.id().contains(" F")).iterator();
-        itB = d2Client.matches().stream().filter((m) -> m.id().contains(" F")).iterator();
+        itA = d1Client.matches().stream().filter((m) -> m.id().matchType() == MatchType.FINAL).iterator();
+        itB = d2Client.matches().stream().filter((m) -> m.id().matchType() == MatchType.FINAL).iterator();
 
         interleaveMatches(matches, itA, itB);
         matches.addAll(d0Client.matches());

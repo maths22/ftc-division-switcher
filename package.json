@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "scripts": {
     "build": "esbuild src/main/javascript/displayController.tsx --jsx=automatic --minify --bundle --sourcemap --format=esm --outdir=build/resources/main/serve",
-    "build:watch": "esbuild src/main/javascript/displayController.tsx --jsx=automatic --minify --bundle --sourcemap --format=esm --outdir=build/resources/main/serve --watch"
+    "build:watch": "esbuild src/main/javascript/displayController.tsx --jsx=automatic --bundle --sourcemap --format=esm --outdir=build/resources/main/serve --watch"
   },
   "dependencies": {
     "bootstrap": "^5.3.0",

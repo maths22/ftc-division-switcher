@@ -24,6 +24,8 @@ import java.util.*;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -280,15 +282,12 @@ public class FtcScoringClient {
         MatchList<? extends Alliance> activeMatches = gson.fromJson(
                 Objects.requireNonNull(get("api/v1/events/" + event + "/matches/active/")),
                 new TypeToken<MatchList<? extends Alliance>>(){}.getType());
-        String rawElimsMatches = get("api/v2/events/" + event + "/elims/");
-        MatchList<ElimsAlliance> allElimsMatches = rawElimsMatches == null ? new MatchList<>(List.of()) : gson.fromJson(
-                Objects.requireNonNull(rawElimsMatches),
-                new TypeToken<MatchList<ElimsAlliance>>(){}.getType());
+        MatchList<ElimsAlliance> allElimsMatches = loadAllElimsMatches();
 
         full.teamList().teams().forEach(t -> teams.put(t.number(), t));
         full.allianceList().alliances().forEach(t -> alliances.put(t.seed(), t));
 
-        matches = Stream.concat(Stream.concat(full.matchList().matches().stream(), full.elimsMatchDetailedList().matches().stream()), allElimsMatches.matches().stream().filter(m -> !m.finished()).map(m -> m.toPartialMatchDetails()))
+        matches = Stream.concat(Stream.concat(full.matchList().matches().stream(), full.elimsMatchDetailedList().matches().stream()), allElimsMatches.matches().stream().filter(m -> !m.finished()).map(com.maths22.ftc.models.Match::toPartialMatchDetails))
                 .map(match -> matchFromDetails(match, activeMatches.matches().stream().anyMatch(am -> match.matchBrief().matchName().equals(am.matchName())))).toList();
         onUpdate.run();
     }
@@ -296,8 +295,8 @@ public class FtcScoringClient {
     private Match matchFromDetails(MatchDetails<? extends Alliance> match, boolean isActive) {
         String name = match.matchBrief().matchName();
         int num = match.matchBrief().matchNumber();
-        List<Team> redAlliance = ((match.matchBrief().red() instanceof ElimsAlliance ea) ? alliances.get(ea.seed()) : match.matchBrief().red()).teamNumbers().stream().map(this::getTeam).toList();
-        List<Team> blueAlliance = ((match.matchBrief().blue() instanceof ElimsAlliance ea) ? alliances.get(ea.seed()) : match.matchBrief().blue()).teamNumbers().stream().map(this::getTeam).toList();
+        List<Team> redAlliance = ((match.matchBrief().red() instanceof ElimsAlliance ea) ? getAlliance(ea.seed()) : match.matchBrief().red()).teamNumbers().stream().map(this::getTeam).toList();
+        List<Team> blueAlliance = ((match.matchBrief().blue() instanceof ElimsAlliance ea) ? getAlliance(ea.seed()) : match.matchBrief().blue()).teamNumbers().stream().map(this::getTeam).toList();
         String score = null;
         if(match.matchBrief().finished()) {
             int redScore = match.redScore();
@@ -307,7 +306,13 @@ public class FtcScoringClient {
             if (redScore < blueScore) desc = 'B';
             score = redScore + "-" + blueScore + " " + desc;
         }
-        return new Match("D" + divisionId + ": " + name, num, score, redAlliance, blueAlliance, isActive);
+        Pattern trailingNumber = Pattern.compile("([0-9]+)$");
+        Matcher m = trailingNumber.matcher(name);
+        if(!m.find()) {
+            throw new IllegalStateException("Match name " + name + " does not end with a number");
+        }
+
+        return new Match(new MatchId(divisionId, MatchType.parseFromName(name), Integer.parseInt(m.group(1))), num, score, redAlliance, blueAlliance, isActive);
     }
 
     private void updateMatch(String shortName, boolean isActive) {
@@ -323,13 +328,56 @@ public class FtcScoringClient {
                     new TypeToken<MatchDetails<ElimsAlliance>>(){}.getType());
             replacement = matchFromDetails(details, isActive);
         }
-        matches = matches.stream().map(m -> m.id().equals(replacement.id()) ? replacement : m).toList();
+        boolean existingMatch = matches.stream().anyMatch(m -> m.id().equals(replacement.id()));
+        if(!existingMatch && matches.stream().noneMatch(m -> m.id().matchType() == replacement.id().matchType())) {
+            if (replacement.id().matchType() == MatchType.QUALS) {
+                loadQuals();
+            } else {
+                loadElims();
+            }
+            existingMatch = matches.stream().anyMatch(m -> m.id().equals(replacement.id()));
+        }
+        matches = existingMatch ? matches.stream().map(m -> m.id().equals(replacement.id()) ? replacement : m).toList() :
+                Stream.concat(matches.stream(), Stream.of(replacement)).sorted().toList();
         onUpdate.run();
     }
 
+    // These methods are only going to be used when no matches have been played, so we don't need to load results
+    private void loadQuals() {
+        MatchList<QualsAlliance> allQualsMatches = loadAllQualsMatches();
+        matches = Stream.concat(matches.stream(), allQualsMatches.matches().stream()
+                .map(m -> m.toPartialMatchDetails())
+                .map(m -> matchFromDetails(m, false))
+                .filter(m -> matches.stream().noneMatch(m2 -> m.id().equals(m2.id())))).toList();
+    }
+
+    private void loadElims() {
+        MatchList<ElimsAlliance> allElimsMatches = loadAllElimsMatches();
+        matches = Stream.concat(matches.stream(), allElimsMatches.matches().stream()
+                .map(m -> m.toPartialMatchDetails())
+                .map(m -> matchFromDetails(m, false))
+                .filter(m -> matches.stream().noneMatch(m2 -> m.id().equals(m2.id())))).toList();
+    }
+
+    private MatchList<QualsAlliance> loadAllQualsMatches() {
+        String rawQualsMatches = get("api/v1/events/" + event + "/matches/");
+        return rawQualsMatches == null ? new MatchList<>(List.of()) : gson.fromJson(
+                rawQualsMatches,
+                new TypeToken<MatchList<QualsAlliance>>(){}.getType());
+    }
+
+    private MatchList<ElimsAlliance> loadAllElimsMatches() {
+        String rawElimsMatches = get("api/v2/events/" + event + "/elims/");
+        return rawElimsMatches == null ? new MatchList<>(List.of()) : gson.fromJson(
+                rawElimsMatches,
+                new TypeToken<MatchList<ElimsAlliance>>(){}.getType());
+    }
+
     private Alliance getAlliance(int seed) {
-        // todo auto reload alliance
-        return null;
+        if(!alliances.containsKey(seed)) {
+            gson.fromJson(Objects.requireNonNull(get("api/v1/events/" + event + "/elim/alliances/")), AllianceList.class).alliances().forEach(t -> alliances.put(t.seed(), t));
+        }
+        return alliances.get(seed);
     }
 
     private Team getTeam(int id) {
