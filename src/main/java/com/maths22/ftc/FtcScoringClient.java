@@ -83,7 +83,6 @@ public class FtcScoringClient {
                         buffer = new StringBuilder();
 
                         MatchUpdate update = gson.fromJson(message, MatchUpdate.class);
-                        System.out.println(update);
                         try {
                             switch (update.updateType()) {
                                 case MATCH_LOAD -> updateMatch(update.payload().shortName(), true);
