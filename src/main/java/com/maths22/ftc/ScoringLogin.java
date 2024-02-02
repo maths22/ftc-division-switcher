@@ -14,7 +14,7 @@ public class ScoringLogin extends JDialog {
         setContentPane(contentPane);
         setModal(true);
         getRootPane().setDefaultButton(buttonOK);
-        eventName.setText(client.getEvent());
+        eventName.setText(client.getEvent().eventCode());
         buttonCancel.addActionListener(e -> this.dispose());
         buttonOK.addActionListener(e -> {
             if(client.login(usernameInput.getText(), new String(passwordInput.getPassword()))) {

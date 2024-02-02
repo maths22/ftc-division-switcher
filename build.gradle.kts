@@ -47,8 +47,6 @@ dependencies {
     implementation(group = "org.slf4j", name = "slf4j-simple", version = "2.0.11")
 
     implementation(group = "com.jetbrains.intellij.java", name = "java-gui-forms-rt", version = "233.14015.61")
-
-    implementation(files("lib/gozirra-0.4.1.jar"))
 }
 
 val buildJs = tasks.register("buildJs", YarnTask::class.java) {

@@ -20,10 +20,12 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.WebSocket;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
-import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -51,20 +53,20 @@ public class FtcScoringClient {
     }
 
     private final Runnable onUpdate;
+    private final Event event;
     private WebSocket socketListener;
     private boolean loggedIn;
-    private String basePath;
-    private String event;
-    private final int divisionId;
-
+    private final String basePath;
     private final Map<Integer, Team> teams = new HashMap<>();
     private final Map<Integer, ElimsAlliance> alliances = new HashMap<>();
     private List<Match> matches = null;
 
-    public FtcScoringClient(int divisionId, Runnable onUpdate) {
-        this.divisionId = divisionId;
+    public FtcScoringClient(String basePath, String eventCode, Runnable onUpdate) {
+        this.basePath = basePath;
         this.loggedIn = false;
         this.onUpdate = onUpdate;
+        this.event = gson.fromJson(get(basePath, "api/v1/events/" + eventCode + "/"), Event.class);
+        testLogin();
     }
 
     public void startSocketListener() {
@@ -73,7 +75,7 @@ public class FtcScoringClient {
         }
         stopSocketListener();
         try {
-            socketListener = client.newWebSocketBuilder().buildAsync(URI.create("ws://" + basePath + "/api/v2/stream/?code=" + event), new WebSocket.Listener() {
+            socketListener = client.newWebSocketBuilder().buildAsync(URI.create("ws://" + basePath + "/api/v2/stream/?code=" + event.eventCode()), new WebSocket.Listener() {
                 private StringBuilder buffer = new StringBuilder();
                 @Override
                 public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
@@ -110,30 +112,12 @@ public class FtcScoringClient {
         }
     }
 
-    public void setBasePath(String basePath) {
-        this.basePath = basePath;
-    }
-
-    public String getEvent() {
+    public Event getEvent() {
         return event;
     }
 
-    public void setEvent(String event) {
-        reset();
-
-        this.event = event;
-        loggedIn = false;
-    }
-
-    private void reset() {
-        stopSocketListener();
-        teams.clear();
-        alliances.clear();
-        matches = null;
-    }
-
-    public List<String> getEvents() {
-        return gson.fromJson(get("api/v1/events/"), EventList.class).eventCodes();
+    public static List<String> getEvents(String basePath) {
+        return gson.fromJson(get(basePath, "api/v1/events/"), EventList.class).eventCodes();
     }
 
     public boolean login(String username, String password) {
@@ -165,17 +149,21 @@ public class FtcScoringClient {
             return false;
         }
 
+        return testLogin();
+    }
+
+    private boolean testLogin() {
         try {
-            get("/event/" + event + "/control/schedule/");
+            get(basePath, "/event/" + event.eventCode() + "/control/schedule/");
         } catch (Exception ex) {
-            ex.printStackTrace();
+            LOG.info("Login failed", ex);
             return false;
         }
         loggedIn = true;
         return true;
     }
 
-    private String get(String path) {
+    private static String get(String basePath, String path) {
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("http://" + basePath + "/" +  path))
@@ -188,12 +176,12 @@ public class FtcScoringClient {
                 return resp.body();
             }
         } catch (IOException | InterruptedException e) {
-            e.printStackTrace();
+            LOG.warn("Request failed", e);
         }
         return null;
     }
 
-    private String post(String path, String payload) {
+    private static String post(String basePath, String path, String payload) {
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("http://" + basePath + "/" +  path))
@@ -206,7 +194,7 @@ public class FtcScoringClient {
                 return resp.body();
             }
         } catch (IOException | InterruptedException e) {
-            e.printStackTrace();
+            LOG.warn("Request failed", e);
         }
         return null;
     }
@@ -215,35 +203,35 @@ public class FtcScoringClient {
         if(!loggedIn) {
             return;
         }
-        post("event/" + event + "/control/sponsors/", "");
+        post(basePath, "event/" + event.eventCode() + "/control/sponsors/", "");
     }
 
     public void showBracket() {
         if(!loggedIn) {
             return;
         }
-        post("event/" + event + "/control/bracket/", "");
+        post(basePath, "event/" + event.eventCode() + "/control/bracket/", "");
     }
 
     public void showSelection() {
         if(!loggedIn) {
             return;
         }
-        post("event/" + event + "/control/selection/show/", "");
+        post(basePath, "event/" + event.eventCode() + "/control/selection/show/", "");
     }
 
     public void showRanks() {
         if(!loggedIn) {
             return;
         }
-        post("event/" + event + "/control/ranks/", "");
+        post(basePath, "event/" + event.eventCode() + "/control/ranks/", "");
     }
 
     public void basicCommand(String cmd) {
         if(!loggedIn) {
             return;
         }
-        post("event/" + event + "/control/command/" + cmd + "/", "");
+        post(basePath, "event/" + event.eventCode() + "/control/command/" + cmd + "/", "");
     }
 
     public void showMessage(String m) {
@@ -251,7 +239,7 @@ public class FtcScoringClient {
             return;
         }
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("http://" + basePath + "/event/" + event + "/control/message/"))
+                .uri(URI.create("http://" + basePath + "/event/" + event.eventCode() + "/control/message/"))
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.ofString("msg=" + URLEncoder.encode(m, StandardCharsets.UTF_8)))
                 .build();
@@ -266,27 +254,28 @@ public class FtcScoringClient {
         if(!loggedIn) {
             return;
         }
-        post("event/" + event + "/control/preview/" + m + "/", "");
+        post(basePath, "event/" + event.eventCode() + "/control/preview/" + m + "/", "");
     }
 
     public void showResults(String m) {
         if(!loggedIn) {
             return;
         }
-        post("event/" + event + "/control/results/" + m + "/", "");
+        post(basePath, "event/" + event.eventCode() + "/control/results/" + m + "/", "");
     }
 
     public void loadMatches() {
-        FullEvent full = gson.fromJson(Objects.requireNonNull(get("api/v2/events/" + event + "/full/")), FullEvent.class);
+        FullEvent full = gson.fromJson(Objects.requireNonNull(get(basePath, "api/v2/events/" + event.eventCode() + "/full/")), FullEvent.class);
         MatchList<? extends Alliance> activeMatches = gson.fromJson(
-                Objects.requireNonNull(get("api/v1/events/" + event + "/matches/active/")),
+                Objects.requireNonNull(get(basePath, "api/v1/events/" + event.eventCode() + "/matches/active/")),
                 new TypeToken<MatchList<? extends Alliance>>(){}.getType());
         MatchList<ElimsAlliance> allElimsMatches = loadAllElimsMatches();
 
         full.teamList().teams().forEach(t -> teams.put(t.number(), t));
         full.allianceList().alliances().forEach(t -> alliances.put(t.seed(), t));
 
-        matches = Stream.concat(Stream.concat(full.matchList().matches().stream(), full.elimsMatchDetailedList().matches().stream()), allElimsMatches.matches().stream().filter(m -> !m.finished()).map(com.maths22.ftc.models.Match::toPartialMatchDetails))
+        // loadAllElimsMatches returns elims matches in the correct order; full event does not but includes results data
+        matches = Stream.concat(full.matchList().matches().stream(), allElimsMatches.matches().stream().map(m -> full.elimsMatchDetailedList().matches().stream().filter(m2 -> m2.matchBrief().matchName().equals(m.matchName())).findFirst().orElse(m.toPartialMatchDetails())))
                 .map(match -> matchFromDetails(match, activeMatches.matches().stream().anyMatch(am -> match.matchBrief().matchName().equals(am.matchName())))).toList();
         onUpdate.run();
     }
@@ -311,19 +300,19 @@ public class FtcScoringClient {
             throw new IllegalStateException("Match name " + name + " does not end with a number");
         }
 
-        return new Match(new MatchId(divisionId, MatchType.parseFromName(name), Integer.parseInt(m.group(1))), num, score, redAlliance, blueAlliance, isActive);
+        return new Match(new MatchId(event.division(), MatchType.parseFromName(name), Integer.parseInt(m.group(1))), num, score, redAlliance, blueAlliance, isActive);
     }
 
     private void updateMatch(String shortName, boolean isActive) {
         Match replacement;
         if(shortName.startsWith("Q")) {
             MatchDetails<QualsAlliance> details = gson.fromJson(
-                    Objects.requireNonNull(get("api/v1/events/" + event + "/matches/" + shortName.replace("Q", "") + "/")),
+                    Objects.requireNonNull(get(basePath, "api/v1/events/" + event.eventCode() + "/matches/" + shortName.replace("Q", "") + "/")),
                     new TypeToken<MatchDetails<QualsAlliance>>(){}.getType());
             replacement = matchFromDetails(details, isActive);
         } else {
             MatchDetails<ElimsAlliance> details = gson.fromJson(
-                    Objects.requireNonNull(get("api/v2/events/" + event + "/elims/" + shortName.toLowerCase() + "/")),
+                    Objects.requireNonNull(get(basePath, "api/v2/events/" + event.eventCode() + "/elims/" + shortName.toLowerCase() + "/")),
                     new TypeToken<MatchDetails<ElimsAlliance>>(){}.getType());
             replacement = matchFromDetails(details, isActive);
         }
@@ -345,7 +334,7 @@ public class FtcScoringClient {
     private void loadQuals() {
         MatchList<QualsAlliance> allQualsMatches = loadAllQualsMatches();
         matches = Stream.concat(matches.stream(), allQualsMatches.matches().stream()
-                .map(m -> m.toPartialMatchDetails())
+                .map(com.maths22.ftc.models.Match::toPartialMatchDetails)
                 .map(m -> matchFromDetails(m, false))
                 .filter(m -> matches.stream().noneMatch(m2 -> m.id().equals(m2.id())))).toList();
     }
@@ -353,20 +342,20 @@ public class FtcScoringClient {
     private void loadElims() {
         MatchList<ElimsAlliance> allElimsMatches = loadAllElimsMatches();
         matches = Stream.concat(matches.stream(), allElimsMatches.matches().stream()
-                .map(m -> m.toPartialMatchDetails())
+                .map(com.maths22.ftc.models.Match::toPartialMatchDetails)
                 .map(m -> matchFromDetails(m, false))
                 .filter(m -> matches.stream().noneMatch(m2 -> m.id().equals(m2.id())))).toList();
     }
 
     private MatchList<QualsAlliance> loadAllQualsMatches() {
-        String rawQualsMatches = get("api/v1/events/" + event + "/matches/");
+        String rawQualsMatches = get(basePath, "api/v1/events/" + event.eventCode() + "/matches/");
         return rawQualsMatches == null ? new MatchList<>(List.of()) : gson.fromJson(
                 rawQualsMatches,
                 new TypeToken<MatchList<QualsAlliance>>(){}.getType());
     }
 
     private MatchList<ElimsAlliance> loadAllElimsMatches() {
-        String rawElimsMatches = get("api/v2/events/" + event + "/elims/");
+        String rawElimsMatches = get(basePath, "api/v2/events/" + event.eventCode() + "/elims/");
         return rawElimsMatches == null ? new MatchList<>(List.of()) : gson.fromJson(
                 rawElimsMatches,
                 new TypeToken<MatchList<ElimsAlliance>>(){}.getType());
@@ -374,7 +363,7 @@ public class FtcScoringClient {
 
     private Alliance getAlliance(int seed) {
         if(!alliances.containsKey(seed)) {
-            gson.fromJson(Objects.requireNonNull(get("api/v1/events/" + event + "/elim/alliances/")), AllianceList.class).alliances().forEach(t -> alliances.put(t.seed(), t));
+            gson.fromJson(Objects.requireNonNull(get(basePath, "api/v1/events/" + event.eventCode() + "/elim/alliances/")), AllianceList.class).alliances().forEach(t -> alliances.put(t.seed(), t));
         }
         return alliances.get(seed);
     }
@@ -383,7 +372,7 @@ public class FtcScoringClient {
         if(id == -1) return null;
         Team ret = teams.get(id);
         if(ret == null) {
-            String rawTeam = get("api/v1/events/" + event + "/teams/" + id + "/");
+            String rawTeam = get(basePath, "api/v1/events/" + event.eventCode() + "/teams/" + id + "/");
             ret = gson.fromJson(Objects.requireNonNull(rawTeam), Team.class);
             teams.put(id, ret);
         }
@@ -395,5 +384,9 @@ public class FtcScoringClient {
             return List.of();
         }
         return matches;
+    }
+
+    public boolean isLoggedIn() {
+        return loggedIn;
     }
 }

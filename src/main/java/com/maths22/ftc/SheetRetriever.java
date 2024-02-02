@@ -13,6 +13,8 @@ import com.google.api.client.util.store.FileDataStoreFactory;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.ValueRange;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -22,6 +24,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class SheetRetriever {
+    private static final Logger LOG = LoggerFactory.getLogger(SheetRetriever.class);
     /** Application name. */
     private static final String APPLICATION_NAME =
             "FTC Scoring Display Manager";
@@ -52,7 +55,7 @@ public class SheetRetriever {
             HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
             DATA_STORE_FACTORY = new FileDataStoreFactory(DATA_STORE_DIR);
         } catch (Throwable t) {
-            t.printStackTrace();
+            LOG.error("Google initialization failed", t);
             System.exit(1);
         }
     }
@@ -117,7 +120,7 @@ public class SheetRetriever {
                 .get(spreadsheetId, titleRange)
                 .execute();
         List<Object> titleValues = titleResponse.getValues().get(0);
-        if (values == null || values.size() == 0) {
+        if (values == null || values.isEmpty()) {
             return null;
         } else {
             return new Result(titleValues, values.stream().map((row) -> zipToMap(titleValues, row))

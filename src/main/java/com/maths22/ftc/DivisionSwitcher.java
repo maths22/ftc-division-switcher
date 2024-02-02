@@ -1,28 +1,23 @@
 package com.maths22.ftc;
 
 import com.google.gson.Gson;
+import com.intellij.uiDesigner.core.GridConstraints;
+import com.intellij.uiDesigner.core.GridLayoutManager;
 import io.javalin.Javalin;
 import io.javalin.http.HttpStatus;
 import io.javalin.http.staticfiles.Location;
-import net.ser1.stomp.Client;
-import net.ser1.stomp.Listener;
 import org.eclipse.jetty.websocket.api.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.security.auth.login.LoginException;
 import javax.swing.*;
-import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
-import java.util.List;
 import java.util.Timer;
 import java.util.*;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 
 public class DivisionSwitcher {
     private static final Logger LOG = LoggerFactory.getLogger(DivisionSwitcher.class);
@@ -30,152 +25,99 @@ public class DivisionSwitcher {
     private final Set<Session> wsClients = new HashSet<>();
     private final SheetRetriever retriever;
     private String data;
-    private JButton connectButton;
-    private JTextField textField1;
-    private JRadioButton division1RadioButton;
-    private JRadioButton division2RadioButton;
-    private JRadioButton rankingsRadioButton;
     private JPanel panel;
-    private JButton d1ConnectButton;
-    private JButton d2ConnectButton;
-    private JTextField d0Address;
-    private JTextField d1Address;
-    private JTextField d2Address;
+    private JTextField serverAddress;
     private JTextArea ipTextArea;
     private JButton resetButton;
-    private JButton d0ConnectButton;
+    private JButton serverConnectButton;
     private JTextField sheetId;
     private JButton sheetIdLoadButton;
-    private JLabel d1Status;
     private JLabel d0Status;
-    private JLabel d2Status;
     private JLabel audienceStatus;
-    private JComboBox<String> d0Event;
-    private JComboBox<String> d1Event;
-    private JComboBox<String> d2Event;
+    private JComboBox<String> eventPicker;
     private JCheckBox enabledCheckBox;
-    private Client switcherClient;
-    private FtcScoringClient d0Client = new FtcScoringClient(0, this::sendMatches);
-    private FtcScoringClient d1Client = new FtcScoringClient(1, this::sendMatches);
-    private FtcScoringClient d2Client = new FtcScoringClient(2, this::sendMatches);
+    private JPanel nowShowingPicker;
+    private List<FtcScoringClient> clients = List.of();
+    private Map<Integer, JRadioButton> divisionButtons = new HashMap<>();
     private String spreadsheetId;
-    private ScheduledExecutorService executor = Executors.newScheduledThreadPool(3);
 
     public static void main(String[] args) {
         JFrame frame = new JFrame("DivisionSwitcher");
-        frame.setContentPane(new DivisionSwitcher().panel);
+        new DivisionSwitcher(frame);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.pack();
         frame.setVisible(true);
     }
 
-    public DivisionSwitcher() {
-        division1RadioButton.addActionListener(e -> sendShowMessage("1"));
-        division2RadioButton.addActionListener(e -> sendShowMessage("2"));
-        rankingsRadioButton.addActionListener(e -> sendShowMessage("r"));
-        connectButton.addActionListener((e) -> {
-            if (switcherClient != null) {
-                switcherClient.disconnect();
-            }
+    public DivisionSwitcher(JFrame frame) {
+        serverAddress.addActionListener((e) -> {
+            eventPicker.removeAllItems();
             try {
-
-                switcherClient = new Client(textField1.getText(), 43784, "user", "password");
-                switcherClient.subscribe("/heartbeat", heartbeatListener(switcherClient, audienceStatus));
-
-
-            } catch (IOException | LoginException e1) {
-                e1.printStackTrace();
-            }
-        });
-        d0Address.addActionListener((e) -> {
-            d0Client.setBasePath(d0Address.getText());
-            d0Event.removeAllItems();
-            try {
-                d0Client.getEvents().forEach((evt) -> d0Event.addItem(evt));
+                FtcScoringClient.getEvents(serverBaseUrl()).stream().sorted().forEach((evt) -> eventPicker.addItem(evt));
             } catch (Exception ex) {
-                ex.printStackTrace();
+                LOG.error("Failed loading event list", ex);
             }
+            frame.pack();
         });
 
-        d1Address.addActionListener((e) -> {
-            d1Client.setBasePath(d1Address.getText());
-            d1Event.removeAllItems();
+       serverConnectButton.addActionListener((ActionEvent e) -> {
             try {
-                d1Client.getEvents().forEach((evt) -> d1Event.addItem(evt));
-            } catch (Exception ex) {
-                ex.printStackTrace();
-            }
-        });
+                // TODO divisions
+                String eventCode = (String) eventPicker.getSelectedItem();
+                if(eventCode == null) {
+                    LOG.debug("No event selected");
+                    return;
+                }
+                FtcScoringClient baseClient = new FtcScoringClient(serverBaseUrl(), eventCode, this::sendMatches);
+                if(!baseClient.getEvent().finals()) {
+                    clients = List.of(baseClient);
+                } else {
+                    String baseCode = eventCode.substring(0, eventCode.length() - 1);
+                    clients = new ArrayList<>();
+                    clients.add(baseClient);
+                    FtcScoringClient.getEvents(serverBaseUrl()).stream().filter(c -> !c.equals(eventCode) && c.startsWith(baseCode))
+                            .map(c -> new FtcScoringClient(serverBaseUrl(), c, this::sendMatches))
+                            .sorted(Comparator.comparingInt(c -> c.getEvent().division()))
+                            .forEach(c -> clients.add(c));
+                }
 
-        d2Address.addActionListener((e) -> {
-            d2Client.setBasePath(d2Address.getText());
-            d2Event.removeAllItems();
-            try {
-                d2Client.getEvents().forEach((evt) -> d2Event.addItem(evt));
-            } catch (Exception ex) {
-                ex.printStackTrace();
-            }
-        });
-       d0ConnectButton.addActionListener((ActionEvent e) -> {
-            try {
-                d0Client.setEvent((String) d1Event.getSelectedItem());
-                if(d0Client.getEvent() == null) return;
-//                d1Client.subscribe("/timer/status", (map, s) -> {
-//                    sendTime("1", s);
-//                });
+                clients.forEach(FtcScoringClient::loadMatches);
+                clients.forEach(FtcScoringClient::startSocketListener);
+                nowShowingPicker.removeAll();
+                nowShowingPicker.setLayout(new GridLayoutManager(1, clients.size()));
+                ButtonGroup newGroup = new ButtonGroup();
+                divisionButtons.clear();
+                for(int i = 0; i < clients.size(); i++) {
+                    FtcScoringClient c = clients.get(i);
+                    JRadioButton newButton = new JRadioButton(c.getEvent().name(), c.getEvent().eventCode().equals(eventCode));
+                    newButton.addActionListener((evt) -> sendShowMessage(c.getEvent().division()));
+                    GridConstraints constraints = new GridConstraints();
+                    constraints.setColumn(i);
+                    nowShowingPicker.add(newButton, constraints);
+                    newGroup.add(newButton);
+                    divisionButtons.put(c.getEvent().division(), newButton);
+                }
+                frame.pack();
 
-                d0Client.loadMatches();
-                d0Client.startSocketListener();
-
-                ScoringLogin dialog = new ScoringLogin(d0Client);
+                ScoringLogin dialog = new ScoringLogin(baseClient);
                 dialog.pack();
                 dialog.setVisible(true);
-            } catch (Exception e1) {
-                e1.printStackTrace();
-            }
-        });
-        d1ConnectButton.addActionListener((ActionEvent e) -> {
-            try {
-                d1Client.setEvent((String) d1Event.getSelectedItem());
-                if(d1Client.getEvent() == null) return;
-//                d1Client.subscribe("/timer/status", (map, s) -> {
-//                    sendTime("1", s);
-//                });
-
-                d1Client.loadMatches();
-                d1Client.startSocketListener();
-
-                ScoringLogin dialog = new ScoringLogin(d1Client);
-                dialog.pack();
-                dialog.setVisible(true);
-            } catch (Exception e1) {
-                e1.printStackTrace();
-            }
-        });
-        d2ConnectButton.addActionListener((ActionEvent e) -> {
-            try {
-                d2Client.setEvent((String) d1Event.getSelectedItem());
-                if(d2Client.getEvent() == null) return;
-//                d2Client.subscribe("/timer/status", (map, s) -> {
-//                    sendTime("1", s);
-//                });
-
-                d2Client.loadMatches();
-                d2Client.startSocketListener();
-
-                ScoringLogin dialog = new ScoringLogin(d2Client);
-                dialog.pack();
-                dialog.setVisible(true);
-            } catch (Exception e1) {
-                e1.printStackTrace();
+            } catch (Exception ex) {
+                LOG.error("Failed connecting to event", ex);
             }
         });
 
-        Javalin app = Javalin.create((config) -> {
+        JavalinVerificationCodeReciever verificationCodeReciever = new JavalinVerificationCodeReciever();
+        Javalin.create((config) -> {
                     config.staticFiles.add(sfc -> {
                         sfc.directory = "/serve";
                         sfc.location = Location.CLASSPATH;
                     });
+                    config.staticFiles.add(sfc -> {
+                        sfc.directory = "/public";
+                        sfc.location = Location.CLASSPATH;
+                    });
+                    config.registerPlugin(verificationCodeReciever);
                 })
                 .get("/api", ctx -> {
                     if(ctx.queryParam("division") == null) {
@@ -193,24 +135,10 @@ public class DivisionSwitcher {
                         return;
                     }
 
-                    if(target.equals("0") || (target.equals("1") && match.isEmpty())) {
-                        sendDisplayMessage(d0Client,display, match);
-                    }
-                    if(target.equals("1")) {
-                        sendDisplayMessage(d1Client, display, match);
-                    }
-                    if(target.equals("2")) {
-                        sendDisplayMessage(d2Client, display, match);
-                    }
+                    sendDisplayMessage(clients.stream().filter(c -> c.getEvent().division() == Integer.parseInt(target)).findFirst().orElseThrow(), display, match);
+                    sendShowMessage(Integer.parseInt(target));
 
-                    if(target.equals("1") || target.equals("2") || target.equals("r")) {
-                        sendShowMessage(target);
-                    } else {
-                        ctx.status(HttpStatus.BAD_REQUEST);
-                        return;
-                    }
-
-                    if(!match.equals("")) {
+                    if(!match.isEmpty()) {
                         data = ctx.queryParam("data");
                         sendState();
                     }
@@ -278,19 +206,13 @@ public class DivisionSwitcher {
                 }
             }
             ipTextArea.setEditable(false);
-        } catch (IOException var5) {
-            var5.printStackTrace();
+        } catch (IOException ex) {
+            LOG.error("Failed to enumerate network addresses");
         }
         resetButton.addActionListener(e -> {
-            d0Client.stopSocketListener();
-            d1Client.stopSocketListener();
-            d2Client.stopSocketListener();
-            d0Address.setText("");
-            d1Address.setText("");
-            d2Address.setText("");
-            d0Event.removeAllItems();
-            d1Event.removeAllItems();
-            d2Event.removeAllItems();
+            serverAddress.setText("");
+            eventPicker.removeAllItems();
+            clients.forEach(FtcScoringClient::stopSocketListener);
             sendMatches();
         });
         sheetIdLoadButton.addActionListener(e -> {
@@ -299,31 +221,8 @@ public class DivisionSwitcher {
         });
         enabledCheckBox.addActionListener(e -> new Thread(DivisionSwitcher.this::sendSingleStep).start());
 
-        retriever = new SheetRetriever(new JavalinVerificationCodeReciever(app));
-    }
-
-    private Listener heartbeatListener(Client client, JLabel status) {
-        status.setBackground(Color.GREEN);
-        Timer timer = new Timer();
-        final TimerTask[] task = {new TimerTask() {
-            @Override
-            public void run() {
-                status.setBackground(Color.RED);
-            }
-        }};
-        timer.schedule(task[0], 15000);
-
-        return (a, b) -> {
-            status.setBackground(Color.GREEN);
-            task[0].cancel();
-            task[0] = new TimerTask() {
-                @Override
-                public void run() {
-                    status.setBackground(Color.RED);
-                }
-            };
-            timer.schedule(task[0], 15000);
-        };
+        retriever = new SheetRetriever(verificationCodeReciever);
+        frame.setContentPane(panel);
     }
 
     private void sendTime(String div, String msg) {
@@ -383,7 +282,7 @@ public class DivisionSwitcher {
                 socket.getRemote().sendString(gson.toJson(new Message.AuxInfo(data)));
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            LOG.warn("Failed to send aux info", e);
         }
     }
 
@@ -409,38 +308,34 @@ public class DivisionSwitcher {
     }
 
     private List<Match> mergedMatches() {
+        if(clients.isEmpty()) {
+            return List.of();
+        }
         List<Match> matches = new ArrayList<>();
-        Iterator<Match> itA;
-        Iterator<Match> itB;
+        List<Iterator<Match>> iterators;
 
-        itA = d1Client.matches().stream().filter((m) -> m.id().matchType() == MatchType.PRACTICE).iterator();
-        itB = d2Client.matches().stream().filter((m) -> m.id().matchType() == MatchType.PRACTICE).iterator();
+        iterators = clients.stream().skip(1).map((c) -> c.matches().stream().filter(m -> m.id().matchType() == MatchType.PRACTICE).iterator()).toList();
+        interleaveMatches(matches, iterators);
 
-        interleaveMatches(matches, itA, itB);
+        iterators = clients.stream().skip(1).map((c) -> c.matches().stream().filter(m -> m.id().matchType() == MatchType.QUALS).iterator()).toList();
+        interleaveMatches(matches, iterators);
 
-        itA = d1Client.matches().stream().filter((m) -> m.id().matchType() == MatchType.QUALS).iterator();
-        itB = d2Client.matches().stream().filter((m) -> m.id().matchType() == MatchType.QUALS).iterator();
+        iterators = clients.stream().skip(1).map((c) -> c.matches().stream().filter(m -> m.id().matchType().isSemiFinal()).iterator()).toList();
+        interleaveMatches(matches, iterators);
 
-        interleaveMatches(matches, itA, itB);
+        iterators = clients.stream().skip(1).map((c) -> c.matches().stream().filter(m -> m.id().matchType() == MatchType.FINAL).iterator()).toList();
+        interleaveMatches(matches, iterators);
 
-        itA = d1Client.matches().stream().filter((m) -> m.id().matchType().isSemiFinal()).iterator();
-        itB = d2Client.matches().stream().filter((m) -> m.id().matchType().isSemiFinal()).iterator();
-
-        interleaveMatches(matches, itA, itB);
-
-        itA = d1Client.matches().stream().filter((m) -> m.id().matchType() == MatchType.FINAL).iterator();
-        itB = d2Client.matches().stream().filter((m) -> m.id().matchType() == MatchType.FINAL).iterator();
-
-        interleaveMatches(matches, itA, itB);
-        matches.addAll(d0Client.matches());
+        matches.addAll(clients.get(0).matches());
 
         return matches;
     }
 
-    private void interleaveMatches(List<Match> matches, Iterator<Match> itA, Iterator<Match> itB) {
-        while (itA.hasNext() || itB.hasNext()) {
-            if (itA.hasNext()) matches.add(itA.next());
-            if (itB.hasNext()) matches.add(itB.next());
+    private void interleaveMatches(List<Match> matches, List<Iterator<Match>> iterators) {
+        while (iterators.stream().anyMatch(Iterator::hasNext)) {
+            for (Iterator<Match> it : iterators) {
+                if (it.hasNext()) matches.add(it.next());
+            }
         }
     }
 
@@ -478,17 +373,14 @@ public class DivisionSwitcher {
         }
     }
 
-    private void sendShowMessage(String s) {
-        switch (s) {
-            case "1" -> division1RadioButton.setSelected(true);
-            case "2" -> division2RadioButton.setSelected(true);
-            case "r" -> rankingsRadioButton.setSelected(true);
-        }
-        if(s.equals("r")) s = "rank";
+    private void sendShowMessage(int i) {
+        divisionButtons.get(i).setSelected(true);
 
-        if(switcherClient != null) {
-            switcherClient.send("/display/show", s);
-        }
+        // TODO broadcast
+    }
+
+    private String serverBaseUrl() {
+        return serverAddress.getText();
     }
 
 

@@ -36,10 +36,16 @@ export function matchNamePrefix(matchType: MatchType) {
             return "SF1-";
         case MatchType.SEMIFINAL2:
             return "SF2-";
+        case MatchType.INTER_SEMIFINAL1:
+            return "ISF1-";
+        case MatchType.INTER_SEMIFINAL2:
+            return "ISF2-";
         case MatchType.RR_SEMIFINAL:
             return "R";
         case MatchType.FINAL:
             return "F";
+        case MatchType.INTER_FINAL:
+            return "IF";
     }
 }
 export function matchDisplayName(matchId: MatchId) {
@@ -47,7 +53,7 @@ export function matchDisplayName(matchId: MatchId) {
 }
 
 export function ordinalSuffixed(i: number) {
-    var j = i % 10,
+    const j = i % 10,
         k = i % 100;
     if (j == 1 && k != 11) {
         return i + "st";

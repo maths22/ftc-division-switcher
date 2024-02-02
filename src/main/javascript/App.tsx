@@ -1,8 +1,8 @@
 import React, {useEffect, useState} from "react";
 import {FullState, isAuxInfo, isMatchData, isSingleStep, isState, Matches, State} from "./types";
-import {MatchId, MatchType, Message, Result, Team} from "./javaTypes";
+import {Message, Result, Team} from "./javaTypes";
 import {getNextState} from "./calculationHelpers";
-import {Button, Col, Form, Nav, Row, Tab, Table} from "react-bootstrap";
+import {Button, Col, Form, Nav, Row, Tab} from "react-bootstrap";
 import {createWebSocket, matchDisplayName, ordinalSuffixed, PermissiveURLSearchParams, stateToLabel} from "./utils";
 
 import './App.css'

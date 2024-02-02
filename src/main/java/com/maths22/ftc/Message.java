@@ -1,7 +1,6 @@
 package com.maths22.ftc;
 
 import java.util.List;
-import java.util.Map;
 
 public abstract sealed class Message {
     public final MessageType messageType;
@@ -46,7 +45,6 @@ public abstract sealed class Message {
             this.data = data;
         }
     }
-
 
     // todo use real types here pls thx
     @TypeScriptExport

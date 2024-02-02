@@ -1,10 +1,8 @@
-package org.firstinspires.ftc.gradle
+package com.maths22.gradle
 
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.plugins.JavaPluginExtension
-import org.gradle.api.tasks.compile.JavaCompile
-import org.gradle.kotlin.dsl.configure
 
 class IntellijFormPlugin : Plugin<Project> {
     override fun apply(project: Project) {

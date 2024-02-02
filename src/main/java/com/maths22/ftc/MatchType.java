@@ -7,8 +7,11 @@ public enum MatchType {
     QUALS("Q", false),
     SEMIFINAL1("SF1", true),
     SEMIFINAL2("SF2", true),
+    INTER_SEMIFINAL1("ISF1", true),
+    INTER_SEMIFINAL2("ISF2", true),
     RR_SEMIFINAL("R", true),
-    FINAL("F", false);
+    FINAL("F", false),
+    INTER_FINAL("IF", false);
 
     private final String namePrefix;
     private final boolean isSemiFinal;
