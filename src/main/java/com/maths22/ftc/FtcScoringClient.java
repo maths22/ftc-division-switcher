@@ -84,17 +84,19 @@ public class FtcScoringClient {
                         String message = buffer.toString();
                         buffer = new StringBuilder();
 
-                        MatchUpdate update = gson.fromJson(message, MatchUpdate.class);
-                        try {
-                            switch (update.updateType()) {
-                                case MATCH_LOAD -> updateMatch(update.payload().shortName(), true);
-                                case MATCH_COMMIT -> updateMatch(update.payload().shortName(), false);
-                                case MATCH_START, MATCH_ABORT, MATCH_POST, SHOW_PREVIEW, SHOW_MATCH, SHOW_RANDOM -> {
-                                    // intentional noop, at least for now
+                        if(!message.equals("pong")) {
+                            try {
+                                MatchUpdate update = gson.fromJson(message, MatchUpdate.class);
+                                switch (update.updateType()) {
+                                    case MATCH_LOAD -> updateMatch(update.payload().shortName(), true);
+                                    case MATCH_COMMIT -> updateMatch(update.payload().shortName(), false);
+                                    case MATCH_START, MATCH_ABORT, MATCH_POST, SHOW_PREVIEW, SHOW_MATCH, SHOW_RANDOM -> {
+                                        // intentional noop, at least for now
+                                    }
                                 }
+                            } catch (Exception ex) {
+                                LOG.error("Error processing match update", ex);
                             }
-                        } catch (Exception ex) {
-                            LOG.error("Error processing match update", ex);
                         }
                     }
                     return WebSocket.Listener.super.onText(webSocket, data, last);
@@ -225,6 +227,13 @@ public class FtcScoringClient {
             return;
         }
         post(basePath, "event/" + event.eventCode() + "/control/ranks/", "");
+    }
+
+    public void showInspectionStatus() {
+        if(!loggedIn) {
+            return;
+        }
+        post(basePath, "event/" + event.eventCode() + "/control/status/", "");
     }
 
     public void basicCommand(String cmd) {

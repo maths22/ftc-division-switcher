@@ -98,6 +98,7 @@ public class DivisionSwitcher {
                     divisionButtons.put(c.getEvent().division(), newButton);
                 }
                 frame.pack();
+                sendEventInfo();
 
                 ScoringLogin dialog = new ScoringLogin(baseClient);
                 dialog.pack();
@@ -138,7 +139,7 @@ public class DivisionSwitcher {
                     sendDisplayMessage(clients.stream().filter(c -> c.getEvent().division() == Integer.parseInt(target)).findFirst().orElseThrow(), display, match);
                     sendShowMessage(Integer.parseInt(target));
 
-                    if(!match.isEmpty()) {
+                    if(!match.isEmpty() && !display.equals("announcement")) {
                         data = ctx.queryParam("data");
                         sendState();
                     }
@@ -159,6 +160,7 @@ public class DivisionSwitcher {
                             ctx.session.getRemote().sendString(gson.toJson(new Message.State(data)));
                         }
                         ctx.session.getRemote().sendString(gson.toJson(new Message.SingleStep(!enabledCheckBox.isSelected())));
+                        ctx.session.getRemote().sendString(gson.toJson(new Message.EventInfo(clients)));
                     });
                     cfg.onClose((ctx) -> wsClients.remove(ctx.session));
                 })
@@ -286,6 +288,16 @@ public class DivisionSwitcher {
         }
     }
 
+    private void sendEventInfo() {
+        try {
+            for(Session socket : wsClients) {
+                socket.getRemote().sendString(gson.toJson(new Message.EventInfo(clients)));
+            }
+        } catch (IOException e) {
+            LOG.warn("Failed to send aux info", e);
+        }
+    }
+
     private SheetRetriever.Result auxData() {
         if(spreadsheetId == null || spreadsheetId.isEmpty()) return null;
         try {
@@ -342,33 +354,16 @@ public class DivisionSwitcher {
     private void sendDisplayMessage(FtcScoringClient client, String s, String m) {
         if(client != null) {
             switch (s) {
-                case "prematch":
-                    client.showMatch(m);
-                    break;
-                case "results":
-                    client.showResults(m);
-                    break;
-                case "rankings":
-                    client.showRanks();
-                    break;
-                case "announcement":
-                    client.showMessage(m);
-                    break;
-                case "alliance":
-                    client.showSelection();
-                    break;
-                case "sponsor":
-                    client.showSponsors();
-                    break;
-                case "elimination":
-                    client.showBracket();
-                case "wifi":
-                case "blank":
-                case "video":
-                case "key":
-                case "online":
-                    client.basicCommand(s);
-                    break;
+                case "prematch" -> client.showMatch(m);
+                case "results" -> client.showResults(m);
+                case "rankings" -> client.showRanks();
+                case "announcement" -> client.showMessage(m);
+                case "alliance" -> client.showSelection();
+                case "sponsor" -> client.showSponsors();
+                case "elimination" -> client.showBracket();
+                case "status" -> client.showInspectionStatus();
+                case "wifi", "blank", "video", "key", "online", "safety_security", "slideshow" ->
+                        client.basicCommand(s);
             }
         }
     }

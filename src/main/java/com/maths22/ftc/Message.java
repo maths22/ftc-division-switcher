@@ -1,5 +1,7 @@
 package com.maths22.ftc;
 
+import com.maths22.ftc.models.Event;
+
 import java.util.List;
 
 public abstract sealed class Message {
@@ -12,6 +14,7 @@ public abstract sealed class Message {
     public enum MessageType {
         MATCH_DATA,
         AUX_INFO,
+        EVENT_INFO,
         SINGLE_STEP,
         STATE
     }
@@ -33,6 +36,16 @@ public abstract sealed class Message {
         public AuxInfo(SheetRetriever.Result data) {
             super(MessageType.AUX_INFO);
             this.data = data;
+        }
+    }
+
+    @TypeScriptExport
+    public static final class EventInfo extends Message {
+        public final List<Event> events;
+
+        public EventInfo(List<FtcScoringClient> clients) {
+            super(MessageType.EVENT_INFO);
+            this.events = clients.stream().map(c -> c.getEvent()).toList();
         }
     }
 

@@ -19,7 +19,7 @@ repositories {
 }
 
 group = "com.maths22.ftc"
-version = "1.0-SNAPSHOT"
+version = "2.0-SNAPSHOT"
 description = "division-switcher"
 
 java {

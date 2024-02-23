@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from "react";
-import {FullState, isAuxInfo, isMatchData, isSingleStep, isState, Matches, State} from "./types";
-import {Message, Result, Team} from "./javaTypes";
+import {FullState, isAuxInfo, isEventInfo, isMatchData, isSingleStep, isState, Matches, State} from "./types";
+import {Event, Message, Result, Team} from "./javaTypes";
 import {getNextState} from "./calculationHelpers";
 import {Button, Col, Form, Nav, Row, Tab} from "react-bootstrap";
 import {createWebSocket, matchDisplayName, ordinalSuffixed, PermissiveURLSearchParams, stateToLabel} from "./utils";
@@ -22,7 +22,7 @@ function AllianceTeamInfo({alliance, auxInfo} : {alliance: Team[], auxInfo?: Res
         <td>
             <b>{team.number}</b><br/>
             <small>{team.rookie}</small><br/>
-            <small>({ordinalSuffixed(2022 - team.rookie)} season)</small>
+            <small>({ordinalSuffixed(2023 - team.rookie)} season)</small>
         </td>
         <td>
             <span className={"fs-4"}>{team.name}</span><br/>
@@ -50,6 +50,7 @@ export default function App() {
     const [prev, setPrev] = useState<FullState[]>([]);
     const [matches, setMatches] = useState<Matches>({});
     const [auxInfo, setAuxInfo] = useState<Result>();
+    const [eventInfo, setEventInfo] = useState<Event[]>([]);
     const [alwaysSingleStep, setAlwaysSingleStep] = useState(false);
     const [time, setTime] = useState({div: 'none', min: 0, sec: 0, phase: 'unknown'});
     const [announcementText, setAnnouncementText] = useState("")
@@ -104,6 +105,8 @@ export default function App() {
                 setState(update[0]);
             } else if (isAuxInfo(response)) {
                 setAuxInfo(response.data);
+            } else if (isEventInfo(response)) {
+                setEventInfo(response.events);
                 // } else if(response.type === 'time') {
                 //     setTime(response.data);
             } else if (isSingleStep(response)) {
@@ -177,7 +180,6 @@ export default function App() {
         sendCommand(["results", uiSelectedMatch], matches);
     }
 
-    console.log(cur)
     return <>
         <h1>FTC Display Switcher</h1>
         <div>
@@ -274,45 +276,53 @@ export default function App() {
                         <Row>
                             <Col sm={6}>
                                 <h3>Rankings</h3>
+                                {eventInfo.map((e) =>
                                 <Button variant="outline-dark"
-                                        onClick={() => sendCommand(['rankings', 'D1'])}>D1</Button>
-                                <Button variant="outline-dark"
-                                        onClick={() => sendCommand(['rankings', 'D2'])}>D2</Button><br/>
-                                {/*<Button variant="outline-dark" onClick={() => sendCommand(['rankings', 'Dr'])}>All</Button><br/>*/}
+                                        onClick={() => sendCommand(['rankings', `D${e.division}`])}>{eventInfo.length > 1 ? (e.division > 0 ? e.name : 'Parent') : 'Show'}</Button>)}
                                 <h3>Alliance Selection</h3>
+                                {eventInfo.filter((e) => eventInfo.length > 1 ? e.division > 0 : true).map((e) =>
                                 <Button variant="outline-dark"
-                                        onClick={() => sendCommand(['alliance', 'D1'])}>D1</Button>
-                                <Button variant="outline-dark"
-                                        onClick={() => sendCommand(['alliance', 'D2'])}>D2</Button><br/>
-                                <h3>Elimination Ladder</h3>
-                                <Button variant="outline-dark"
-                                        onClick={() => sendCommand(['elimination', 'D1'])}>D1</Button>
-                                <Button variant="outline-dark"
-                                        onClick={() => sendCommand(['elimination', 'D2'])}>D2</Button><br/>
+                                        onClick={() => sendCommand(['alliance', `D${e.division}`])}>{eventInfo.length > 1 ? (e.division > 0 ? e.name : 'Parent') : 'Show'}</Button>)}
+                                <h3>Elimination Bracket</h3>
+                                {eventInfo.map((e) =>
+                                    <Button variant="outline-dark"
+                                            onClick={() => sendCommand(['elimination', `D${e.division}`])}>{eventInfo.length > 1 ? (e.division > 0 ? e.name : 'Parent') : 'Show'}</Button>)}
                                 <h3>Online Results</h3>
-                                <Button variant="outline-dark" onClick={() => sendCommand(['online', 'D1'])}>D1</Button>
-                                <Button variant="outline-dark" onClick={() => sendCommand(['online', 'D2'])}>D2</Button><br/>
+                                {eventInfo.map((e) =>
+                                    <Button variant="outline-dark"
+                                            onClick={() => sendCommand(['online', `D${e.division}`])}>{eventInfo.length > 1 ? (e.division > 0 ? e.name : 'Parent') : 'Show'}</Button>)}
+                                <h3>Inspection Status</h3>
+                                {eventInfo.map((e) =>
+                                    <Button variant="outline-dark"
+                                            onClick={() => sendCommand(['status', `D${e.division}`])}>{eventInfo.length > 1 ? (e.division > 0 ? e.name : 'Parent') : 'Show'}</Button>)}
                             </Col>
                             <Col sm={6}>
                                 <h3>Sponsor Listing</h3>
-                                <Button variant="outline-dark"
-                                        onClick={() => sendCommand(['sponsor', 'D1'])}>Show</Button><br/>
+                                <Button variant="outline-dark" disabled={eventInfo.length == 0}
+                                        onClick={() => sendCommand(['sponsor', `D${eventInfo[0]?.division}`])}>Show</Button><br/>
                                 <h3>Blank</h3>
-                                <Button variant="outline-dark"
-                                        onClick={() => sendCommand(['blank', 'D1'])}>Show</Button><br/>
+                                <Button variant="outline-dark" disabled={eventInfo.length == 0}
+                                        onClick={() => sendCommand(['blank', `D${eventInfo[0]?.division}`])}>Show</Button><br/>
                                 <h3>Video only</h3>
-                                <Button variant="outline-dark"
-                                        onClick={() => sendCommand(['video', 'D1'])}>Show</Button><br/>
+                                <Button variant="outline-dark" disabled={eventInfo.length == 0}
+                                        onClick={() => sendCommand(['video', `D${eventInfo[0]?.division}`])}>Show</Button><br/>
                                 <h3>Wi-Fi reminder</h3>
-                                <Button variant="outline-dark" onClick={() => sendCommand(['wifi', 'D1'])}>Show</Button><br/>
+                                <Button variant="outline-dark" disabled={eventInfo.length == 0}
+                                        onClick={() => sendCommand(['wifi', `D${eventInfo[0]?.division}`])}>Show</Button><br/>
                                 <h3>Audience Key</h3>
-                                <Button variant="outline-dark"
-                                        onClick={() => sendCommand(['key', 'D1'])}>Show</Button><br/>
+                                <Button variant="outline-dark" disabled={eventInfo.length == 0}
+                                        onClick={() => sendCommand(['key', `D${eventInfo[0]?.division}`])}>Show</Button><br/>
+                                <h3>Safety and Security</h3>
+                                <Button variant="outline-dark" disabled={eventInfo.length == 0}
+                                        onClick={() => sendCommand(['safety_security', `D${eventInfo[0]?.division}`])}>Show</Button><br/>
+                                <h3>Slideshow (sponsors/wifi/key/safety)</h3>
+                                <Button variant="outline-dark" disabled={eventInfo.length == 0}
+                                        onClick={() => sendCommand(['slideshow', `D${eventInfo[0]?.division}`])}>Show</Button><br/>
                                 <h3>Announcement</h3>
                                 <textarea value={announcementText}
                                           onChange={(e) => setAnnouncementText(e.target.value)}></textarea>
-                                <Button variant="outline-dark"
-                                        onClick={() => sendCommand(['announcement', 'D1', announcementText])}>Show</Button><br/>
+                                <Button variant="outline-dark" disabled={eventInfo.length == 0}
+                                        onClick={() => sendCommand(['announcement', `D${eventInfo[0]?.division}`, announcementText])}>Show</Button><br/>
                             </Col>
                         </Row>
                     </Tab.Pane>
