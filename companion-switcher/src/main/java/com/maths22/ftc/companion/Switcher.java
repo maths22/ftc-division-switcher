@@ -17,6 +17,7 @@ import java.net.http.HttpResponse;
 import java.net.http.WebSocket;
 import java.util.List;
 import java.util.*;
+import java.util.Timer;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 
@@ -37,6 +38,8 @@ public class Switcher {
     private WebSocket switcherSocket;
     private EventPicker scoringSelector;
     private final Map<Integer, Integer> currField = new HashMap<>();
+    private Timer timer = new Timer();
+    private List<TimerTask> tasks = new ArrayList<>();
 
     public Switcher() {
         scoringSelector.setOnPick((clients) -> {
@@ -97,6 +100,52 @@ public class Switcher {
             currField.put(division, field);
             setCompanionVariable("ftc_d" + division + "_field", String.valueOf(field));
         }
+        String stateKey = "ftc_d" + division + "_state";
+        switch (update.updateType()) {
+            case SHOW_PREVIEW -> setCompanionVariable(stateKey, "preview");
+            case SHOW_MATCH -> setCompanionVariable(stateKey, "prematch");
+            case MATCH_START -> {
+                var transitionTrigger = new TimerTask() {
+                    @Override
+                    public void run() {
+                        setCompanionVariable(stateKey, "transition");
+                    }
+                };
+                var teleopTrigger = new TimerTask() {
+                    @Override
+                    public void run() {
+                        setCompanionVariable(stateKey, "teleop");
+                    }
+                };
+                var endgameTrigger = new TimerTask() {
+                    @Override
+                    public void run() {
+                        setCompanionVariable(stateKey, "endgame");
+                    }
+                };
+                var completedTrigger = new TimerTask() {
+                    @Override
+                    public void run() {
+                        setCompanionVariable(stateKey, "completed");
+                    }
+                };
+                tasks.add(transitionTrigger);
+                tasks.add(teleopTrigger);
+                tasks.add(endgameTrigger);
+                tasks.add(completedTrigger);
+                timer.schedule(transitionTrigger, 30 * 1000);
+                timer.schedule(teleopTrigger, (30 + 8) * 1000);
+                timer.schedule(endgameTrigger, (30 + 8 + (120-30)) * 1000);
+                timer.schedule(completedTrigger, (30 + 8 + 120) * 1000);
+                setCompanionVariable(stateKey, "auto");
+            }
+            case MATCH_ABORT -> {
+                tasks.forEach(TimerTask::cancel);
+                timer.purge();
+                setCompanionVariable(stateKey, "aborted");
+            }
+        }
+
     }
 
     private void setCompanionVariable(String name, String value) {
