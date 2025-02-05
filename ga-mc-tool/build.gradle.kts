@@ -66,4 +66,7 @@ tasks {
     processResources {
         dependsOn(buildJs)
     }
+    jar {
+        duplicatesStrategy = DuplicatesStrategy.FAIL
+    }
 }

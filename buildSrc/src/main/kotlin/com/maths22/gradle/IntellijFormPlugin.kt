@@ -43,14 +43,14 @@ class IntellijFormPlugin : Plugin<Project> {
             ))
 
             sourceSet.java.srcDirs.forEach {srcDir ->
-                    val dirs = mutableListOf(srcDir.toString())
-                    project.configurations.getByName("implementation").dependencies.withType(ProjectDependency::class.java).forEach {
-                        val depJavaExtension = it.dependencyProject.extensions.getByType(JavaPluginExtension::class.java)
-                        val depSourceSet = depJavaExtension.sourceSets.getByName("main")
-                        dirs.add(depSourceSet.java.srcDirs.single().toString())
-                    }
+                val dirs = mutableListOf(srcDir.toString())
+                project.configurations.getByName("implementation").dependencies.withType(ProjectDependency::class.java).forEach {
+                    val depJavaExtension = it.dependencyProject.extensions.getByType(JavaPluginExtension::class.java)
+                    val depSourceSet = depJavaExtension.sourceSets.getByName("main")
+                    dirs.add(depSourceSet.java.srcDirs.single().toString())
+                }
 
-                    ant.withGroovyBuilder {
+                ant.withGroovyBuilder {
                     "instrumentIdeaExtensions"(
                         "srcDir" to srcDir.toString(),
                         "destDir" to sourceSet.output.classesDirs.singleFile.toString(),

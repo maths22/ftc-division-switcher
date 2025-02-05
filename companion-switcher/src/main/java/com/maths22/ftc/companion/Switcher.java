@@ -1,9 +1,10 @@
-package com.maths22.ftc;
+package com.maths22.ftc.companion;
 
 import com.maths22.ftc.scoring.client.EventPicker;
 import com.maths22.ftc.scoring.client.FtcScoringClient;
 import com.maths22.ftc.scoring.client.models.Event;
 import com.maths22.ftc.scoring.client.models.MatchUpdate;
+import com.maths22.ftc.scoring.client.models.UpdateType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,6 +23,13 @@ import java.util.concurrent.ExecutionException;
 public class Switcher {
     private static final Logger LOG = LoggerFactory.getLogger(Switcher.class);
     private static final HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+    private static final List<UpdateType> SUPPORTED_UPDATES = List.of(
+            UpdateType.SHOW_MATCH,
+            UpdateType.SHOW_PREVIEW,
+            UpdateType.SHOW_RANDOM,
+            UpdateType.MATCH_START,
+            UpdateType.MATCH_ABORT
+    );
     private JPanel panel;
     private JTextField companionUrl;
     private JTextField displaySwitcherHostField;
@@ -80,9 +88,12 @@ public class Switcher {
     }
 
     public void process(Event event, MatchUpdate update) {
+        if(!SUPPORTED_UPDATES.contains(update.updateType())) {
+            return;
+        }
         int division = event.division();
         int field = update.payload().field();
-        if(field != currField.get(division)) {
+        if(!currField.containsKey(division) || field != currField.get(division)) {
             currField.put(division, field);
             setCompanionVariable("ftc_d" + division + "_field", String.valueOf(field));
         }

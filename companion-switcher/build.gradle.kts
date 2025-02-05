@@ -18,7 +18,7 @@ java {
 }
 
 application {
-    mainClass = "com.maths22.ftc.DivisionSwitcher"
+    mainClass = "com.maths22.ftc.companion.Switcher"
 }
 
 dependencies {
