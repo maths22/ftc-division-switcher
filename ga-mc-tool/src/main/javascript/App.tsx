@@ -221,7 +221,7 @@ export default function App() {
                                 </Col>
                                 <Col sm={4} className="d-grid">
                                     <Button variant="primary" onClick={clickMatchPlayNext}
-                                            disabled={!next || (next[0] === 'prematch' && !matches[next[1]]?.isActive)}>
+                                            disabled={!next || (next[0] === 'prematch' && !matches[next[1]]?.isActive) || (next && next[0] === 'results' && !matches[next[1]].score)}>
                                         Next
                                         <br/>
                                         {next ? (stateToLabel(next[0]) + " " + next[1]) : ''}
