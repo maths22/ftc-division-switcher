@@ -11,6 +11,7 @@ public enum MatchType {
     INTER_SEMIFINAL2("ISF2", true),
     RR_SEMIFINAL("R", true),
     FINAL("F", false),
+    NEW_PLAYOFF("M", false),
     INTER_FINAL("IF", false);
 
     private final String namePrefix;

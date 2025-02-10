@@ -46,6 +46,8 @@ export function matchNamePrefix(matchType: MatchType) {
             return "F";
         case MatchType.INTER_FINAL:
             return "IF";
+        case MatchType.NEW_PLAYOFF:
+            return "M";
     }
 }
 export function matchDisplayName(matchId: MatchId) {
