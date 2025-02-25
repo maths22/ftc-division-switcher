@@ -104,6 +104,7 @@ public class FtcScoringClient {
     }
 
     public static List<String> getEvents(String basePath) {
+        LOG.debug("Loading events from {}", basePath);
         return gson.fromJson(get(basePath, "api/v1/events/"), EventList.class).eventCodes();
     }
 
@@ -133,6 +134,7 @@ public class FtcScoringClient {
         }
 
         if(response.body().contains("alert-danger")) {
+            LOG.warn("Login failed (invalid username/password)");
             return false;
         }
 
@@ -143,10 +145,13 @@ public class FtcScoringClient {
         try {
             get(basePath, "/event/" + event.eventCode() + "/control/schedule/");
         } catch (Exception ex) {
-            LOG.info("Login failed", ex);
+            LOG.warn("Login failed", ex);
             return false;
         }
-        loggedIn = true;
+        if(!loggedIn) {
+            loggedIn = true;
+            LOG.debug("Login successful");
+        }
         return true;
     }
 
@@ -190,6 +195,7 @@ public class FtcScoringClient {
         if(!loggedIn) {
             return;
         }
+        LOG.debug("Showing sponsors for {}", event.eventCode());
         post(basePath, "event/" + event.eventCode() + "/control/sponsors/", "");
     }
 
@@ -197,6 +203,7 @@ public class FtcScoringClient {
         if(!loggedIn) {
             return;
         }
+        LOG.debug("Showing bracket for {}", event.eventCode());
         post(basePath, "event/" + event.eventCode() + "/control/bracket/", "");
     }
 
@@ -204,6 +211,7 @@ public class FtcScoringClient {
         if(!loggedIn) {
             return;
         }
+        LOG.debug("Showing selection for {}", event.eventCode());
         post(basePath, "event/" + event.eventCode() + "/control/selection/show/", "");
     }
 
@@ -211,6 +219,7 @@ public class FtcScoringClient {
         if(!loggedIn) {
             return;
         }
+        LOG.debug("Showing ranks for {}", event.eventCode());
         post(basePath, "event/" + event.eventCode() + "/control/ranks/", "");
     }
 
@@ -218,6 +227,7 @@ public class FtcScoringClient {
         if(!loggedIn) {
             return;
         }
+        LOG.debug("Showing inspection status for {}", event.eventCode());
         post(basePath, "event/" + event.eventCode() + "/control/status/", "");
     }
 
@@ -225,6 +235,7 @@ public class FtcScoringClient {
         if(!loggedIn) {
             return;
         }
+        LOG.debug("Sending basic command {} for {}", cmd, event.eventCode());
         post(basePath, "event/" + event.eventCode() + "/control/command/" + cmd + "/", "");
     }
 
@@ -232,6 +243,7 @@ public class FtcScoringClient {
         if(!loggedIn) {
             return;
         }
+        LOG.debug("Sending message {} for {}", m, event.eventCode());
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://" + basePath + "/event/" + event.eventCode() + "/control/message/"))
                 .header("Content-Type", "application/x-www-form-urlencoded")
@@ -248,6 +260,7 @@ public class FtcScoringClient {
         if(!loggedIn) {
             return;
         }
+        LOG.debug("Showing match {} for {}", m, event.eventCode());
         post(basePath, "event/" + event.eventCode() + "/control/preview/" + m + "/", "");
     }
 
@@ -255,10 +268,12 @@ public class FtcScoringClient {
         if(!loggedIn) {
             return;
         }
+        LOG.debug("Showing results for {} for {}", m, event.eventCode());
         post(basePath, "event/" + event.eventCode() + "/control/results/" + m + "/", "");
     }
 
     public MatchList<QualsAlliance> getQualsMatches() {
+        LOG.debug("Loading quals matches for {}", event.eventCode());
         String rawQualsMatches = get(basePath, "api/v1/events/" + event.eventCode() + "/matches/");
         return rawQualsMatches == null ? new MatchList<>(List.of()) : gson.fromJson(
                 rawQualsMatches,
@@ -266,6 +281,7 @@ public class FtcScoringClient {
     }
 
     public MatchList<ElimsAlliance> getElimsMatches() {
+        LOG.debug("Loading elim matches for {}", event.eventCode());
         String rawElimsMatches = get(basePath, "api/v2/events/" + event.eventCode() + "/elims/");
         return rawElimsMatches == null ? new MatchList<>(List.of()) : gson.fromJson(
                 rawElimsMatches,
@@ -273,11 +289,13 @@ public class FtcScoringClient {
     }
 
     public List<ElimsAlliance> getAlliances() {
+        LOG.debug("Loading alliances for {}", event.eventCode());
         return gson.fromJson(Objects.requireNonNull(get(basePath, "api/v1/events/" + event.eventCode() + "/elim/alliances/")), AllianceList.class).alliances();
     }
 
     public Team getTeam(int id) {
         if(id == -1) return null;
+        LOG.debug("Loading team {} (event {})", id, event.eventCode());
         String rawTeam = get(basePath, "api/v1/events/" + event.eventCode() + "/teams/" + id + "/");
         return gson.fromJson(Objects.requireNonNull(rawTeam), Team.class);
     }
@@ -287,6 +305,7 @@ public class FtcScoringClient {
     }
 
     public MatchDetails<? extends Alliance> getMatchDetails(String shortName) {
+        LOG.debug("Loading match info for {} - {}", event.eventCode(), shortName);
         if(shortName.startsWith("Q")) {
             return gson.fromJson(
                     Objects.requireNonNull(get(basePath, "api/v1/events/" + event.eventCode() + "/matches/" + shortName.replace("Q", "") + "/")),
@@ -299,12 +318,14 @@ public class FtcScoringClient {
     }
 
     public MatchList<? extends Alliance> getActiveMatches() {
+        LOG.debug("Loading active matches for {}", event.eventCode());
         return gson.fromJson(
                 Objects.requireNonNull(get(basePath, "api/v1/events/" + event.eventCode() + "/matches/active/")),
                 new TypeToken<MatchList<? extends Alliance>>(){}.getType());
     }
 
     public FullEvent getFullEvent() {
+        LOG.debug("Loading full event info for {}", event.eventCode());
         return gson.fromJson(Objects.requireNonNull(get(basePath, "api/v2/events/" + event.eventCode() + "/full/")), FullEvent.class);
     }
 

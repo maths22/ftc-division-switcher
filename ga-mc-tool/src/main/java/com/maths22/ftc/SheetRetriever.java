@@ -12,10 +12,13 @@ import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.store.FileDataStoreFactory;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
+import com.google.api.services.sheets.v4.model.Sheet;
+import com.google.api.services.sheets.v4.model.Spreadsheet;
 import com.google.api.services.sheets.v4.model.ValueRange;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.swing.*;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -87,8 +90,7 @@ public class SheetRetriever {
                         .build();
         Credential credential = new AuthorizationCodeInstalledApp(
                 flow, verificationCodeReceiver).authorize("user");
-        System.err.println(
-                "Credentials saved to " + DATA_STORE_DIR.getAbsolutePath());
+        LOG.info("Credentials saved to {}", DATA_STORE_DIR.getAbsolutePath());
         return credential;
     }
 
@@ -104,28 +106,31 @@ public class SheetRetriever {
                 .build();
     }
 
-    public Result getTeamInfo(String spreadsheetId) throws IOException {
+    public Result getTeamInfo(String spreadsheetId, String worksheetName, String keyColumn) throws IOException {
         // Build a new authorized API client service.
         Sheets service = getSheetsService();
 
         // Prints the names and majors of students in a sample spreadsheet:
         // https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
-        String range = "A2:YY";
+        String range = "'" + worksheetName + "'!A2:YY";
         ValueRange response = service.spreadsheets().values()
                 .get(spreadsheetId, range)
                 .execute();
-        List<List<Object>> values = response.getValues();
-        String titleRange = "A1:YY1";
+        if(response.getValues() == null) {
+            return null;
+        }
+        List<List<String>> values = response.getValues().stream().map((row) -> row.stream().map(Object::toString).toList()).toList();
+        String titleRange = "'" + worksheetName + "'!A1:YY1";
         ValueRange titleResponse = service.spreadsheets().values()
                 .get(spreadsheetId, titleRange)
                 .execute();
-        List<Object> titleValues = titleResponse.getValues().get(0);
-        if (values == null || values.isEmpty()) {
+        List<String> titleValues = titleResponse.getValues().get(0).stream().map(Object::toString).toList();
+        if (values.isEmpty()) {
             return null;
         } else {
             return new Result(titleValues, values.stream().map((row) -> zipToMap(titleValues, row))
                     .collect(Collectors.toMap(
-                            (e) -> e.get(titleValues.get(0)),
+                            (e) -> Integer.parseInt(e.get(keyColumn)),
                             (e) -> e)));
         }
     }
@@ -137,6 +142,25 @@ public class SheetRetriever {
                 .collect(Collectors.toMap(_i -> keyIter.next(), _i -> valIter.next()));
     }
 
-    public record Result(List<Object> titles, Map<Object, Map<Object, Object>> entries) {
+    public String pickWorksheet(String spreadsheetId) throws IOException {
+        Sheets service = getSheetsService();
+        Spreadsheet sheet = service.spreadsheets().get(spreadsheetId).execute();
+        sheet.getSheets().stream().map(s -> s.getProperties().getTitle());
+        return (String) JOptionPane.showInputDialog(null, "Pick a worksheet", "Pick a worksheet", JOptionPane.QUESTION_MESSAGE, null, sheet.getSheets().stream().map(s -> s.getProperties().getTitle()).toArray(), null);
+    }
+
+    public String pickKeyColumn(String spreadsheetId, String worksheetName) throws IOException {
+        // Build a new authorized API client service.
+        Sheets service = getSheetsService();
+
+        String titleRange = "'" + worksheetName + "'!A1:YY1";
+        ValueRange titleResponse = service.spreadsheets().values()
+                .get(spreadsheetId, titleRange)
+                .execute();
+        List<String> titleValues = titleResponse.getValues().get(0).stream().map(Object::toString).toList();
+        return (String) JOptionPane.showInputDialog(null, "Pick a key column", "Pick a key column", JOptionPane.QUESTION_MESSAGE, null, titleValues.toArray(), null);
+    }
+
+    public record Result(List<String> titles, Map<Integer, Map<String, String>> entries) {
     }
 }

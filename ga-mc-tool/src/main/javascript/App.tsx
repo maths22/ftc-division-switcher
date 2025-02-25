@@ -22,7 +22,7 @@ function AllianceTeamInfo({alliance, auxInfo} : {alliance: Team[], auxInfo?: Res
         <td>
             <b>{team.number}</b><br/>
             <small>{team.rookie}</small><br/>
-            <small>({ordinalSuffixed(2023 - team.rookie)} season)</small>
+            <small>({ordinalSuffixed(2025 - team.rookie)} season)</small>
         </td>
         <td>
             <span className={"fs-4"}>{team.name}</span><br/>
@@ -33,7 +33,7 @@ function AllianceTeamInfo({alliance, auxInfo} : {alliance: Team[], auxInfo?: Res
             {auxInfo?.titles.map((title) => {
                 const teamData = auxInfo.entries[team.number];
                 const entry = teamData ? teamData[title] || "" : "";
-                if(entry == team.number.toString() || entry.toLowerCase() == team.name.toLowerCase()) {
+                if(entry == team.number.toString() || entry.toLowerCase() == team.name.toLowerCase() || entry.trim().length == 0) {
                     return null;
                 }
                 return <><small>{title}: {entry}</small><br/></>;

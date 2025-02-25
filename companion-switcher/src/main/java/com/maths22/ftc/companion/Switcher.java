@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -37,6 +38,8 @@ public class Switcher {
     private JButton displaySwitcherConnectButton;
     private WebSocket switcherSocket;
     private EventPicker scoringSelector;
+    private JLabel divisionSwitcherStatus;
+    private JTextArea loggerTextArea;
     private final Map<Integer, Integer> currField = new HashMap<>();
     private Timer timer = new Timer();
     private List<TimerTask> tasks = new ArrayList<>();
@@ -54,6 +57,14 @@ public class Switcher {
             try {
                 switcherSocket = client.newWebSocketBuilder().buildAsync(URI.create("ws://" + displaySwitcherHostField.getText() + "/divisionstream"), new WebSocket.Listener() {
                     private StringBuilder buffer = new StringBuilder();
+
+                    @Override
+                    public void onOpen(WebSocket webSocket) {
+                        divisionSwitcherStatus.setText("Connected");
+                        divisionSwitcherStatus.setBackground(new java.awt.Color(0,128,0));
+                        WebSocket.Listener.super.onOpen(webSocket);
+                    }
+
                     @Override
                     public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
                         buffer.append(data);
@@ -70,24 +81,65 @@ public class Switcher {
                                     }
                                 } catch (Exception ex) {
                                     LOG.error("Error processing stream update", ex);
+                                    divisionSwitcherStatus.setText("Error");
+                                    divisionSwitcherStatus.setBackground(new java.awt.Color(255, 0, 0));
                                 }
                             }
                         }
                         return WebSocket.Listener.super.onText(webSocket, data, last);
                     }
+
+                    @Override
+                    public void onError(WebSocket webSocket, Throwable error) {
+                        WebSocket.Listener.super.onError(webSocket, error);
+                        divisionSwitcherStatus.setText("Error");
+                        divisionSwitcherStatus.setBackground(new java.awt.Color(255, 0, 0));
+                    }
+
+                    @Override
+                    public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
+                        divisionSwitcherStatus.setText("Disconnected");
+                        divisionSwitcherStatus.setBackground(new java.awt.Color(255, 255, 0));
+                        return WebSocket.Listener.super.onClose(webSocket, statusCode, reason);
+                    }
                 }).get();
             } catch (InterruptedException | ExecutionException ex) {
                 LOG.error("Failed to connect to switcher", ex);
+                divisionSwitcherStatus.setText("Error");
+                divisionSwitcherStatus.setBackground(new java.awt.Color(255, 0, 0));
             }
         });
     }
 
     public static void main(String[] args) {
         JFrame frame = new JFrame("Switcher");
-        frame.setContentPane(new Switcher().panel);
+        Switcher switcher = new Switcher();
+        frame.setContentPane(switcher.panel);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.pack();
         frame.setVisible(true);
+
+        System.setOut(new PrintStream(System.out) {
+            public void println(String s) {
+                switcher.logOut(s);
+                super.println(s);
+            }
+        });
+
+        System.setErr(new PrintStream(System.err) {
+            public void println(String s) {
+                switcher.logErr(s);
+                super.println(s);
+            }
+        });
+    }
+
+    private void logOut(String s) {
+        loggerTextArea.append(s + "\n");
+    }
+
+    private void logErr(String s) {
+        loggerTextArea.append(s + "\n");
     }
 
     public void process(Event event, MatchUpdate update) {
@@ -150,6 +202,7 @@ public class Switcher {
 
     private void setCompanionVariable(String name, String value) {
         if(!companionUrl.getText().isEmpty()) {
+            LOG.debug("Setting companion variable {} to {}", name, value);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("http://" + companionUrl.getText() + "/api/custom-variable/" + name + "/value"))
                     .header("Content-Type", "text/plain")

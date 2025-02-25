@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
@@ -39,15 +40,40 @@ public class DivisionSwitcher {
     private List<MatchManager> clients = List.of();
     private Map<Integer, JRadioButton> divisionButtons = new HashMap<>();
     private int activeDivision = 0;
-    private String spreadsheetId;
     private EventPicker eventSelector;
+    private JTextArea loggerTextArea;
+    private String spreadsheetId;
+    private String worksheetName;
+    private String keyColumn;
 
     public static void main(String[] args) {
         JFrame frame = new JFrame("DivisionSwitcher");
-        new DivisionSwitcher(frame);
+        DivisionSwitcher switcher = new DivisionSwitcher(frame);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.pack();
         frame.setVisible(true);
+
+        System.setOut(new PrintStream(System.out) {
+            public void println(String s) {
+                switcher.logOut(s);
+                super.println(s);
+            }
+        });
+
+        System.setErr(new PrintStream(System.err) {
+            public void println(String s) {
+                switcher.logErr(s);
+                super.println(s);
+            }
+        });
+    }
+
+    private void logOut(String s) {
+        loggerTextArea.append(s + "\n");
+    }
+
+    private void logErr(String s) {
+        loggerTextArea.append(s + "\n");
     }
 
     public DivisionSwitcher(JFrame frame) {
@@ -203,13 +229,29 @@ public class DivisionSwitcher {
             sendMatches();
         });
         sheetIdLoadButton.addActionListener(e -> {
-            spreadsheetId = sheetId.getText();
-            new Thread(DivisionSwitcher.this::sendAuxInfo).start();
+            setSpreadsheetId(sheetId.getText());
         });
         enabledCheckBox.addActionListener(e -> new Thread(DivisionSwitcher.this::sendSingleStep).start());
 
         retriever = new SheetRetriever(verificationCodeReciever);
         frame.setContentPane(panel);
+    }
+
+    private void setSpreadsheetId(String text) {
+        spreadsheetId = text.strip();
+        try {
+            worksheetName = retriever.pickWorksheet(spreadsheetId);
+            if(worksheetName == null) {
+                return;
+            }
+            keyColumn = retriever.pickKeyColumn(spreadsheetId, worksheetName);
+            if(keyColumn == null) {
+                return;
+            }
+            new Thread(DivisionSwitcher.this::sendAuxInfo).start();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void sendTime(String div, String msg) {
@@ -259,9 +301,9 @@ public class DivisionSwitcher {
     }
 
     private SheetRetriever.Result auxData() {
-        if(spreadsheetId == null || spreadsheetId.isEmpty()) return null;
+        if(spreadsheetId == null || spreadsheetId.isEmpty() || worksheetName == null || keyColumn == null) return null;
         try {
-            return retriever.getTeamInfo(spreadsheetId);
+            return retriever.getTeamInfo(spreadsheetId, worksheetName, keyColumn);
         } catch (IOException e) {
             LOG.error("Failed retrieving aux data", e);
         }

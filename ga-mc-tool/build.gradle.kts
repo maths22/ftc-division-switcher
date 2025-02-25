@@ -16,7 +16,7 @@ repositories {
 }
 
 group = "com.maths22.ftc"
-version = "1.1-SNAPSHOT"
+version = "1.2-SNAPSHOT"
 description = "ga-mc-tool"
 
 java {
