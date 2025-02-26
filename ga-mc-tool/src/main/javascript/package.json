@@ -14,7 +14,8 @@
     "persistent-websocket": "^1.0.2",
     "react": "^19.0.0",
     "react-bootstrap": "^2.10.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "timesync": "^1.0.11"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",

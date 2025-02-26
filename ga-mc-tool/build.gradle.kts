@@ -70,7 +70,7 @@ val serveJs = tasks.register("serveJs", ExecFork::class.java) {
         if (executableAndScriptProvider.get().script != null) listOf(executableAndScriptProvider.get().script.toString()) else listOf()
 
     executable = executableAndScriptProvider.get().executable
-    args = argsPrefix.plus(listOf("dev")).toMutableList()
+    args = argsPrefix.plus(listOf("run", "dev")).toMutableList()
     environment = computeEnvironment(mapOf(), additionalBinPathProvider.get())
     workingDir = project.file("${project.projectDir}/src/main/javascript")
 }

@@ -1,5 +1,7 @@
 package com.maths22.ftc;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import com.intellij.uiDesigner.core.GridConstraints;
 import com.intellij.uiDesigner.core.GridLayoutManager;
 import com.maths22.ftc.scoring.client.EventPicker;
@@ -45,6 +47,7 @@ public class DivisionSwitcher {
     private String spreadsheetId;
     private String worksheetName;
     private String keyColumn;
+    private static final Gson timesyncGson = new Gson();
 
     public static void main(String[] args) {
         JFrame frame = new JFrame("DivisionSwitcher");
@@ -163,6 +166,25 @@ public class DivisionSwitcher {
                         ctx.send(new Message.EventInfo(clients.stream().map(MatchManager::getEvent).toList()));
                     });
                     cfg.onClose(matchWsClients::remove);
+                    cfg.onMessage((ctx) -> {
+                        String message = ctx.message();
+                        if(message.startsWith("TIMESYNC:")) {
+                            if(clients.isEmpty()) {
+                                return;
+                            }
+                            Map<String, Object> req = timesyncGson.fromJson(
+                                    message.substring("TIMESYNC:".length()),
+                                    new TypeToken<Map<String, Object>>() {}.getType()
+                            );
+                            clients.get(0).getClient().timesync().thenAccept((v) -> {
+                                Map<String, Object> ret = new HashMap<>();
+                                ret.put("jsonrpc", "2.0");
+                                ret.put("id", req.get("id"));
+                                ret.put("result", v);
+                                ctx.send("TIMESYNC:" + timesyncGson.toJson(ret));
+                            });
+                        }
+                    });
                 })
                 .ws("/api/divisionstream", (cfg) -> {
                     cfg.onConnect((ctx) -> {

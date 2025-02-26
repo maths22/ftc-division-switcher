@@ -1,4 +1,4 @@
-import {useEffect, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {FullState, isAuxInfo, isEventInfo, isMatchData, isSingleStep, isState, Matches, State} from "./types.ts";
 import {Event, Message, Result, Team} from "./javaTypes.ts";
 import {getNextState} from "./calculationHelpers.ts";
@@ -6,6 +6,12 @@ import {Button, Col, Form, Nav, Row, Tab} from "react-bootstrap";
 import {createWebSocket, matchDisplayName, ordinalSuffixed, PermissiveURLSearchParams, stateToLabel} from "./utils.ts";
 
 import './App.css'
+import {TimeSync, create as createTimesync} from "timesync";
+import {PersistentWebsocket} from "persistent-websocket";
+
+const AUTO_DURATION = 30;
+const TRANSITION_DURATION = 8;
+const TELEOP_DURATION = 120;
 
 function sendCommand(args: [State | string, string, string?], matches?: Matches) {
     fetch("/api/show?" + PermissiveURLSearchParams({
@@ -18,7 +24,7 @@ function sendCommand(args: [State | string, string, string?], matches?: Matches)
 
 function AllianceTeamInfo({alliance, auxInfo} : {alliance: Team[], auxInfo?: Result}) {
     return <>
-    {alliance.map((team) => <tr>
+    {alliance.map((team) => <tr key={team.number}>
         <td>
             <b>{team.number}</b><br/>
             <small>{team.rookie}</small><br/>
@@ -43,6 +49,33 @@ function AllianceTeamInfo({alliance, auxInfo} : {alliance: Team[], auxInfo?: Res
     </>
 }
 
+function displayTime(time: number) {
+    if(time < 0) return "2:30";
+    time = Math.ceil(time);
+    if(time > TELEOP_DURATION + TRANSITION_DURATION) {
+        time -= TRANSITION_DURATION;
+    } else if (time > TELEOP_DURATION) {
+        time -= TELEOP_DURATION;
+    }
+    const min = Math.floor(time / 60);
+    const sec = time % 60;
+    return `${min}:${sec.toString().padStart(2, '0')}`;
+}
+
+function displayPhase(time: number) {
+    if(time < 0) return "";
+    time = Math.ceil(time);
+    if(time > TELEOP_DURATION + TRANSITION_DURATION) {
+        return "AUTO";
+    } else if (time > TELEOP_DURATION) {
+        return "Transition";
+    } else if (time > 0) {
+        return "TELEOP";
+    } else {
+        return "";
+    }
+}
+
 export default function App() {
     const [matchSelectVal, setMatchSelectVal] = useState<string>();
     const [uiSelectedMatch, setUiSelectedMatch] = useState<string>();
@@ -52,9 +85,10 @@ export default function App() {
     const [auxInfo, setAuxInfo] = useState<Result>();
     const [eventInfo, setEventInfo] = useState<Event[]>([]);
     const [alwaysSingleStep, setAlwaysSingleStep] = useState(false);
-    // const [time, setTime] = useState({div: 'none', min: 0, sec: 0, phase: 'unknown'});
     const [announcementText, setAnnouncementText] = useState("")
     const matchNames = Object.keys(matches);
+    const timesync = useRef<TimeSync<PersistentWebsocket>>(undefined);
+    const [remaining, setRemaining] = useState(-1);
 
     const cur: FullState | undefined = matchSelectVal ? [state, matchSelectVal] : undefined;
     const nextState = getNextState(state, matchSelectVal, matches, alwaysSingleStep) || ["prematch", 0];
@@ -90,8 +124,21 @@ export default function App() {
 
     useEffect(() => {
         const socket = createWebSocket("/api/matchstream");
+        const ts = createTimesync({
+            server: socket,
+            interval: 30000
+        });
+        timesync.current = ts;
+        ts.send = async function (socket, data) {
+            return socket.send("TIMESYNC:" + JSON.stringify(data));
+        };
+
         socket.onmessage = (event) => {
             if (event.data === 'ping') return;
+            if (event.data.startsWith("TIMESYNC:")) {
+                ts.receive(null, JSON.parse(event.data.substring("TIMESYNC:".length)));
+                return;
+            }
             const response: Message = JSON.parse(event.data);
             if (isMatchData(response)) {
                 setMatches(Object.fromEntries(response.data.map(m => [matchDisplayName(m.id), m])));
@@ -114,7 +161,28 @@ export default function App() {
             }
 
         };
+
+        return () => {
+            socket.close();
+        }
     }, [])
+
+    useEffect(() => {
+        if(cur && cur[0] != 'results' && matches[cur[1]]?.startTime && matches[cur[1]].startTime > 0) {
+            const endTime = matches[cur[1]].startTime + (AUTO_DURATION + TRANSITION_DURATION + TELEOP_DURATION) * 1000;
+            const interval = setInterval(() => {
+                const now = timesync.current?.now() || Date.now();
+                const remaining = endTime - now;
+                if(remaining < 0) {
+                    clearInterval(interval);
+                }
+                setRemaining(Math.max(remaining / 1000, 0));
+            }, 100);
+            return () => clearInterval(interval);
+        } else {
+            setRemaining(-1);
+        }
+    }, [matches, cur]);
 
     function clickMatchPlayNext() {
         if (next) {
@@ -233,7 +301,8 @@ export default function App() {
 
                             <h4>{cur ? (stateToLabel(cur[0]) + " " + cur[1]) : ''}</h4>
                             <h4>{cur && cur[0] === 'results' ? (matches[cur[1]].score || 'Match Not Yet Scored') : ''}</h4>
-                            {/*<h4>{cur && cur[0] === 'timer' ? `${time['min']}:${('0' + time['sec']).slice(-2)} (${time['phase']})` : ''}</h4>*/}
+                            {/*<h4>{cur && cur[0] !== 'results' ? `${time['min']}:${('0' + time['sec']).slice(-2)} (${time['phase']})` : ''}</h4>*/}
+                            <h4>{cur && cur[0] !== 'results' ? `${displayTime(remaining)} ${displayPhase(remaining)}` : ''}</h4>
 
                             {!cur || cur[0] === 'results' || !matches[cur[1]] ? null : <table className={"w-100 team-table"}>
                                 <thead>
@@ -257,7 +326,7 @@ export default function App() {
                                     <Form.Label>Match</Form.Label>
                                     <Form.Select value={uiSelectedMatch}
                                                  onChange={(e) => setUiSelectedMatch(e.target.value)}>
-                                        {matchNames.map((value) => <option
+                                        {matchNames.map((value) => <option key={value}
                                             value={value}>{value} ({matches[value]?.score ? matches[value].score : "Not yet scored"})</option>)}
                                     </Form.Select>
                                 </Form.Group>
@@ -277,23 +346,23 @@ export default function App() {
                             <Col sm={6}>
                                 <h3>Rankings</h3>
                                 {eventInfo.map((e) =>
-                                <Button variant="outline-dark"
+                                <Button variant="outline-dark" key={e.eventCode}
                                         onClick={() => sendCommand(['rankings', `D${e.division}`])}>{eventInfo.length > 1 ? (e.division > 0 ? e.name : 'Parent') : 'Show'}</Button>)}
                                 <h3>Alliance Selection</h3>
                                 {eventInfo.filter((e) => eventInfo.length > 1 ? e.division > 0 : true).map((e) =>
-                                <Button variant="outline-dark"
+                                <Button variant="outline-dark" key={e.eventCode}
                                         onClick={() => sendCommand(['alliance', `D${e.division}`])}>{eventInfo.length > 1 ? (e.division > 0 ? e.name : 'Parent') : 'Show'}</Button>)}
                                 <h3>Elimination Bracket</h3>
                                 {eventInfo.map((e) =>
-                                    <Button variant="outline-dark"
+                                    <Button variant="outline-dark" key={e.eventCode}
                                             onClick={() => sendCommand(['elimination', `D${e.division}`])}>{eventInfo.length > 1 ? (e.division > 0 ? e.name : 'Parent') : 'Show'}</Button>)}
                                 <h3>Online Results</h3>
                                 {eventInfo.map((e) =>
-                                    <Button variant="outline-dark"
+                                    <Button variant="outline-dark" key={e.eventCode}
                                             onClick={() => sendCommand(['online', `D${e.division}`])}>{eventInfo.length > 1 ? (e.division > 0 ? e.name : 'Parent') : 'Show'}</Button>)}
                                 <h3>Inspection Status</h3>
                                 {eventInfo.map((e) =>
-                                    <Button variant="outline-dark"
+                                    <Button variant="outline-dark" key={e.eventCode}
                                             onClick={() => sendCommand(['status', `D${e.division}`])}>{eventInfo.length > 1 ? (e.division > 0 ? e.name : 'Parent') : 'Show'}</Button>)}
                             </Col>
                             <Col sm={6}>

@@ -23,7 +23,9 @@ public class MatchManager {
             switch (update.updateType()) {
                 case MATCH_LOAD -> updateMatch(update.payload().shortName(), true);
                 case MATCH_COMMIT -> updateMatch(update.payload().shortName(), false);
-                case MATCH_START, MATCH_ABORT, MATCH_POST, SHOW_PREVIEW, SHOW_MATCH, SHOW_RANDOM -> {
+                case MATCH_START -> updateMatchStart(update.payload().shortName(), update.updateTime());
+                case MATCH_ABORT -> updateMatchStart(update.payload().shortName(), -1);
+                case MATCH_POST, SHOW_PREVIEW, SHOW_MATCH, SHOW_RANDOM -> {
                     // intentional noop, at least for now
                 }
             }
@@ -76,13 +78,22 @@ public class MatchManager {
             throw new IllegalStateException("Match name " + name + " does not end with a number");
         }
 
-        return new Match(new MatchId(client.getEvent().division(), MatchType.parseFromName(name), Integer.parseInt(m.group(1))), num, score, redAlliance, blueAlliance, isActive);
+        return new Match(new MatchId(client.getEvent().division(), MatchType.parseFromName(name), Integer.parseInt(m.group(1))), num, score, redAlliance, blueAlliance, isActive, -1);
     }
-
-
 
     private void updateMatch(String shortName, boolean isActive) {
         Match replacement = matchFromDetails(client.getMatchDetails(shortName), isActive);
+        updateMatch(replacement);
+    }
+
+    private void updateMatchStart(String shortName, long start) {
+        MatchId id = new MatchId(client.getEvent().division(), shortName);
+        Match replacement = matches.stream().filter(m -> m.id().equals(id)).findFirst().orElseThrow();
+        replacement = replacement.withStartTime(start);
+        updateMatch(replacement);
+    }
+
+    private void updateMatch(Match replacement) {
         boolean existingMatch = matches.stream().anyMatch(m -> m.id().equals(replacement.id()));
         if(!existingMatch && matches.stream().noneMatch(m -> m.id().matchType() == replacement.id().matchType())) {
             if (replacement.id().matchType() == MatchType.QUALS) {

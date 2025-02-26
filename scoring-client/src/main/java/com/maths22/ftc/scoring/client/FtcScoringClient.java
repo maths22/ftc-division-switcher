@@ -19,11 +19,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.WebSocket;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -53,6 +53,7 @@ public class FtcScoringClient {
     private WebSocket socketListener;
     private boolean loggedIn;
     private final String basePath;
+    private final Map<UUID, CompletableFuture<Long>> timesyncRequests = new HashMap<>();
 
     public FtcScoringClient(String basePath, String eventCode) {
         this.basePath = basePath;
@@ -72,8 +73,24 @@ public class FtcScoringClient {
                     if(last) {
                         String message = buffer.toString();
                         buffer = new StringBuilder();
-
-                        if(!message.equals("pong")) {
+                        if(message.equals("pong")) {
+                            // Ignore pings
+                        } else if (message.startsWith("TIMESYNC:")) {
+                            try {
+                                Map<String, Object> res = gson.fromJson(
+                                        message.substring("TIMESYNC:".length()),
+                                        new TypeToken<Map<String, Object>>() {}.getType()
+                                );
+                                UUID id = UUID.fromString((String) res.get("id"));
+                                long time = ((Number) res.get("result")).longValue();
+                                CompletableFuture<Long> future = timesyncRequests.remove(id);
+                                if(future != null) {
+                                    future.complete(time);
+                                }
+                            } catch (Exception e) {
+                                LOG.error("Error processing timesync response", e);
+                            }
+                        } else {
                             try {
                                 MatchUpdate update = gson.fromJson(message, MatchUpdate.class);
                                 if(onMatchUpdate != null) {
@@ -331,5 +348,28 @@ public class FtcScoringClient {
 
     public void setOnMatchUpdate(Consumer<MatchUpdate> onMatchUpdate) {
         this.onMatchUpdate = onMatchUpdate;
+    }
+
+    public CompletableFuture<Long> timesync() {
+        UUID id = UUID.randomUUID();
+        CompletableFuture<Long> ret = new CompletableFuture<>();
+        ret = ret.orTimeout(10, java.util.concurrent.TimeUnit.SECONDS).whenComplete((Long aLong, Throwable throwable) -> {
+            if(throwable != null) {
+                timesyncRequests.remove(id);
+            }
+        });
+        timesyncRequests.put(id, ret);
+        Map<String, Object> req = new HashMap<>();
+        req.put("jsonrpc", "2.0");
+        req.put("id", id);
+        req.put("method", "timesync");
+        try {
+            socketListener.sendText("TIMESYNC:" + gson.toJson(req), true).get();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e.getCause());
+        }
+        return ret;
     }
 }

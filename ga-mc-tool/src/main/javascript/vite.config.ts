@@ -18,5 +18,6 @@ export default defineConfig({
   },
   build: {
     outDir: '../../../build/resources/main/serve',
+    emptyOutDir: true
   }
 })
