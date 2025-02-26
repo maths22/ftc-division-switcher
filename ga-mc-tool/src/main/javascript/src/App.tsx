@@ -168,8 +168,8 @@ export default function App() {
     }, [])
 
     useEffect(() => {
-        if(cur && cur[0] != 'results' && matches[cur[1]]?.startTime && matches[cur[1]].startTime > 0) {
-            const endTime = matches[cur[1]].startTime + (AUTO_DURATION + TRANSITION_DURATION + TELEOP_DURATION) * 1000;
+        if(state != 'results' && matchSelectVal && matches[matchSelectVal]?.startTime && matches[matchSelectVal].startTime > 0) {
+            const endTime = matches[matchSelectVal].startTime + (AUTO_DURATION + TRANSITION_DURATION + TELEOP_DURATION) * 1000;
             const interval = setInterval(() => {
                 const now = timesync.current?.now() || Date.now();
                 const remaining = endTime - now;
@@ -182,7 +182,7 @@ export default function App() {
         } else {
             setRemaining(-1);
         }
-    }, [matches, cur]);
+    }, [matches, state, matchSelectVal]);
 
     function clickMatchPlayNext() {
         if (next) {

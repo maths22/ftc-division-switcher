@@ -1,12 +1,12 @@
 {
-  "name": "tmp",
+  "name": "ga-mc-tool",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "eslint tmp",
+    "lint": "eslint",
     "preview": "vite preview"
   },
   "dependencies": {

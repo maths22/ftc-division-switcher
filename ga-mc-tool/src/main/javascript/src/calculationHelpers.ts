@@ -40,7 +40,7 @@ export function getNextState(state: State, selectedMatch: string | undefined, ma
         }
     }
     if (state === "results") {
-        let remainingInPhase = allMatchesInPhase.length - indexInPhase - 1;
+        const remainingInPhase = allMatchesInPhase.length - indexInPhase - 1;
         if (remainingInPhase === 1) {
             return ["results", 1];
         } else if (remainingInPhase === 0) {

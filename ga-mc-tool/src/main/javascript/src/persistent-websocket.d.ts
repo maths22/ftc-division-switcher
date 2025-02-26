@@ -20,10 +20,12 @@ declare module "persistent-websocket" {
         close(code?: number, reason?: string): void;
         send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void;
 
+        /* eslint-disable @typescript-eslint/no-explicit-any */
         onclose: ((this: PersistentWebsocket, ev: CloseEvent) => any) | null;
         onerror: ((this: PersistentWebsocket, ev: Event) => any) | null;
         onmessage: ((this: PersistentWebsocket, ev: MessageEvent) => any) | null;
         onopen: ((this: PersistentWebsocket, ev: Event) => any) | null;
+        /* eslint-enable @typescript-eslint/no-explicit-any */
     }
 
 }

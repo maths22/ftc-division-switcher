@@ -4,6 +4,7 @@ declare module "timesync" {
         destroy();
         now(): number;
         on(event: "change", callback: (offset: number) => void);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         on(event: "error", callback: (err: any) => void);
         on(event: "sync", callback: (value: "start" | "end") => void);
         off(event: "change" | "error" | "sync", callback?: () => void);
