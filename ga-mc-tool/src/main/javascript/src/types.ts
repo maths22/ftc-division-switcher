@@ -1,4 +1,4 @@
-import {AuxInfo, EventInfo, Match, MatchData, Message, SingleStep, State as StateMessage} from "./javaTypes";
+import {AuxInfo, EventInfo, Match, MatchData, Message, SingleStep, State as StateMessage} from "./javaTypes.ts";
 
 export type State = 'prematch' | 'results' | 'timer';
 export type FullState = [State, string];

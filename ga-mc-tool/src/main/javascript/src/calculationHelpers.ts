@@ -1,5 +1,5 @@
-import {MatchType} from "./javaTypes";
-import {Matches, State} from "./types";
+import {MatchType} from "./javaTypes.ts";
+import {Matches, State} from "./types.ts";
 
 function singleStep(state: State): [State, number] | null {
     if (state === "prematch") {

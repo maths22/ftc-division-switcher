@@ -1,6 +1,6 @@
 import {PersistentWebsocket} from "persistent-websocket";
-import {State} from "./types";
-import {MatchId, MatchType} from "./javaTypes";
+import {State} from "./types.ts";
+import {MatchId, MatchType} from "./javaTypes.ts";
 
 export const PermissiveURLSearchParams = (init: Record<string, string | number | boolean | undefined>) => new URLSearchParams(init as Record<string, string>)
 

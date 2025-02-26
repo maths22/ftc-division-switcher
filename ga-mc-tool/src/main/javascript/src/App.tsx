@@ -1,14 +1,14 @@
-import React, {useEffect, useState} from "react";
-import {FullState, isAuxInfo, isEventInfo, isMatchData, isSingleStep, isState, Matches, State} from "./types";
-import {Event, Message, Result, Team} from "./javaTypes";
-import {getNextState} from "./calculationHelpers";
+import {useEffect, useState} from "react";
+import {FullState, isAuxInfo, isEventInfo, isMatchData, isSingleStep, isState, Matches, State} from "./types.ts";
+import {Event, Message, Result, Team} from "./javaTypes.ts";
+import {getNextState} from "./calculationHelpers.ts";
 import {Button, Col, Form, Nav, Row, Tab} from "react-bootstrap";
-import {createWebSocket, matchDisplayName, ordinalSuffixed, PermissiveURLSearchParams, stateToLabel} from "./utils";
+import {createWebSocket, matchDisplayName, ordinalSuffixed, PermissiveURLSearchParams, stateToLabel} from "./utils.ts";
 
 import './App.css'
 
 function sendCommand(args: [State | string, string, string?], matches?: Matches) {
-    fetch("/api?" + PermissiveURLSearchParams({
+    fetch("/api/show?" + PermissiveURLSearchParams({
         division: args[1][1],
         display: args[0],
         match: (matches && matches[args[1]].num) || args[2] || "",
@@ -52,7 +52,7 @@ export default function App() {
     const [auxInfo, setAuxInfo] = useState<Result>();
     const [eventInfo, setEventInfo] = useState<Event[]>([]);
     const [alwaysSingleStep, setAlwaysSingleStep] = useState(false);
-    const [time, setTime] = useState({div: 'none', min: 0, sec: 0, phase: 'unknown'});
+    // const [time, setTime] = useState({div: 'none', min: 0, sec: 0, phase: 'unknown'});
     const [announcementText, setAnnouncementText] = useState("")
     const matchNames = Object.keys(matches);
 
@@ -89,7 +89,7 @@ export default function App() {
     const next: FullState | undefined = nextMatch ? [nextState[0], nextMatch] : undefined;
 
     useEffect(() => {
-        const socket = createWebSocket("/matchstream");
+        const socket = createWebSocket("/api/matchstream");
         socket.onmessage = (event) => {
             if (event.data === 'ping') return;
             const response: Message = JSON.parse(event.data);
@@ -156,17 +156,17 @@ export default function App() {
         sendCommand(["prematch", uiSelectedMatch], matches);
     }
 
-    function clickMatchPlayTimer() {
-        if (!uiSelectedMatch) {
-            return;
-        }
-        setMatchSelectVal(uiSelectedMatch);
-        setState("timer");
-        if (cur) {
-            setPrev((prev) => [...prev, cur]);
-        }
-        sendCommand(["timer", uiSelectedMatch], matches);
-    }
+    // function clickMatchPlayTimer() {
+    //     if (!uiSelectedMatch) {
+    //         return;
+    //     }
+    //     setMatchSelectVal(uiSelectedMatch);
+    //     setState("timer");
+    //     if (cur) {
+    //         setPrev((prev) => [...prev, cur]);
+    //     }
+    //     sendCommand(["timer", uiSelectedMatch], matches);
+    // }
 
     function clickMatchPlayResults() {
         if (!uiSelectedMatch) {
@@ -180,7 +180,7 @@ export default function App() {
         sendCommand(["results", uiSelectedMatch], matches);
     }
 
-    return <>
+    return <div className={"container"}>
         <h1>FTC Display Switcher</h1>
         <div>
 
@@ -233,7 +233,7 @@ export default function App() {
 
                             <h4>{cur ? (stateToLabel(cur[0]) + " " + cur[1]) : ''}</h4>
                             <h4>{cur && cur[0] === 'results' ? (matches[cur[1]].score || 'Match Not Yet Scored') : ''}</h4>
-                            <h4>{cur && cur[0] === 'timer' ? `${time['min']}:${('0' + time['sec']).slice(-2)} (${time['phase']})` : ''}</h4>
+                            {/*<h4>{cur && cur[0] === 'timer' ? `${time['min']}:${('0' + time['sec']).slice(-2)} (${time['phase']})` : ''}</h4>*/}
 
                             {!cur || cur[0] === 'results' || !matches[cur[1]] ? null : <table className={"w-100 team-table"}>
                                 <thead>
@@ -329,5 +329,5 @@ export default function App() {
                 </Tab.Content>
             </Tab.Container>
         </div>
-    </>;
+    </div>;
 }

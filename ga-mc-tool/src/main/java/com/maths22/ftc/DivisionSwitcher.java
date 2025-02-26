@@ -114,10 +114,6 @@ public class DivisionSwitcher {
                         sfc.directory = "/serve";
                         sfc.location = Location.CLASSPATH;
                     });
-                    config.staticFiles.add(sfc -> {
-                        sfc.directory = "/public";
-                        sfc.location = Location.CLASSPATH;
-                    });
                     config.registerPlugin(verificationCodeReciever);
                     config.jsonMapper(new JavalinGson());
                     config.jetty.modifyServer(server -> {
@@ -125,7 +121,7 @@ public class DivisionSwitcher {
                         server.setRequestLog(requestLog);
                     });
                 })
-                .get("/api", ctx -> {
+                .get("/api/show", ctx -> {
                     if(ctx.queryParam("division") == null) {
                         ctx.status(HttpStatus.BAD_REQUEST);
                         return;
@@ -151,7 +147,7 @@ public class DivisionSwitcher {
 
                     ctx.json(Map.of("status", "ok"));
                 })
-                .ws("/matchstream", (cfg) -> {
+                .ws("/api/matchstream", (cfg) -> {
                     cfg.onConnect((ctx) -> {
                         matchWsClients.add(ctx);
 
@@ -168,7 +164,7 @@ public class DivisionSwitcher {
                     });
                     cfg.onClose(matchWsClients::remove);
                 })
-                .ws("/divisionstream", (cfg) -> {
+                .ws("/api/divisionstream", (cfg) -> {
                     cfg.onConnect((ctx) -> {
                         divisionWsClients.add(ctx);
 
@@ -176,7 +172,7 @@ public class DivisionSwitcher {
                     });
                     cfg.onClose(divisionWsClients::remove);
                 })
-                .start(8888);
+                .start(Integer.parseInt(System.getProperty("serve.port", "8888")));
         Timer timer = new Timer();
         timer.schedule(new TimerTask() {
             @Override

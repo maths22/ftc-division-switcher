@@ -55,7 +55,7 @@ public class Switcher {
                 switcherSocket = null;
             }
             try {
-                switcherSocket = client.newWebSocketBuilder().buildAsync(URI.create("ws://" + displaySwitcherHostField.getText() + "/divisionstream"), new WebSocket.Listener() {
+                switcherSocket = client.newWebSocketBuilder().buildAsync(URI.create("ws://" + displaySwitcherHostField.getText() + "/api/divisionstream"), new WebSocket.Listener() {
                     private StringBuilder buffer = new StringBuilder();
 
                     @Override
