@@ -64,12 +64,19 @@ public class MatchManager {
         List<Team> redAlliance = ((match.matchBrief().red() instanceof ElimsAlliance ea) ? getAlliance(ea.seed()) : match.matchBrief().red()).teamNumbers().stream().map(this::getTeam).toList();
         List<Team> blueAlliance = ((match.matchBrief().blue() instanceof ElimsAlliance ea) ? getAlliance(ea.seed()) : match.matchBrief().blue()).teamNumbers().stream().map(this::getTeam).toList();
         String score = null;
+        AllianceColor winner = null;
         if(match.matchBrief().finished()) {
             int redScore = match.redScore();
             int blueScore = match.blueScore();
             char desc = 'T';
-            if (redScore > blueScore) desc = 'R';
-            if (redScore < blueScore) desc = 'B';
+            if (redScore > blueScore) {
+                desc = 'R';
+                winner = AllianceColor.RED;
+            }
+            if (redScore < blueScore) {
+                desc = 'B';
+                winner = AllianceColor.BLUE;
+            }
             score = redScore + "-" + blueScore + " " + desc;
         }
         Pattern trailingNumber = Pattern.compile("([0-9]+)$");
@@ -78,7 +85,8 @@ public class MatchManager {
             throw new IllegalStateException("Match name " + name + " does not end with a number");
         }
 
-        return new Match(new MatchId(client.getEvent().division(), MatchType.parseFromName(name), Integer.parseInt(m.group(1))), num, score, redAlliance, blueAlliance, isActive, -1);
+
+        return new Match(new MatchId(client.getEvent().division(), MatchType.parseFromName(name), Integer.parseInt(m.group(1))), num, score, winner, redAlliance, blueAlliance, isActive, -1);
     }
 
     private void updateMatch(String shortName, boolean isActive) {

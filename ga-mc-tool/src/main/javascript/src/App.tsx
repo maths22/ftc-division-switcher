@@ -288,7 +288,7 @@ export default function App() {
                                     </Button>
                                 </Col>
                                 <Col sm={4} className="d-grid">
-                                    <Button variant="primary" onClick={clickMatchPlayNext}
+                                    <Button variant={next && next[0] === 'results' ? (matches[next[1]].winner == 'RED' ? 'danger' : (matches[next[1]].winner == 'BLUE' ? 'primary' : 'secondary')) : 'secondary'} onClick={clickMatchPlayNext}
                                             disabled={!next || (next[0] === 'prematch' && !matches[next[1]]?.isActive) || (next && next[0] === 'results' && !matches[next[1]].score)}>
                                         Next
                                         <br/>
